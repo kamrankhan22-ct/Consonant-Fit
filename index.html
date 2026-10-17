@@ -51,6 +51,8 @@ li button{background:none;border:0;color:var(--mute);font-size:20px;cursor:point
 .empty{color:var(--mute);margin:0}
 .goal{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px;color:var(--mute)}
 .goal input{width:80px;padding:6px 8px}
+#af{grid-template-columns:1fr;margin-top:12px}
+button.alt{grid-column:1/-1;font:600 16px "Archivo",sans-serif;background:none;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -76,12 +78,17 @@ li button{background:none;border:0;color:var(--mute);font-size:20px;cursor:point
   </section>
 
   <section><h2>History</h2><ul id="list"></ul></section>
+  <section id="acct" hidden><h2>Sync</h2>
+    <p class="meta" id="acctmsg">Sign in to keep your workouts on all your devices.</p>
+    <div id="sout"><form id="af" autocomplete="on"><label class="w">Email<input id="em" type="email" autocomplete="email" required></label><label class="w">Password<input id="pw" type="password" autocomplete="current-password" minlength="6" required></label><button class="go" type="submit">Sign in</button><button class="alt" id="mk" type="button">Create account</button></form></div>
+    <div id="sin" hidden><p id="who" style="margin:0 0 10px"></p><button class="alt" id="so" type="button" style="width:100%">Sign out</button></div>
+  </section>
 </main>
 <script>
 (function(){
   var KEY="fit-v1",S={log:[],goal:150};
   try{var raw=localStorage.getItem(KEY);if(raw){var p=JSON.parse(raw);if(p&&Array.isArray(p.log))S=p;}}catch(e){}
-  function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){} if(window.fitPush)window.fitPush(S);}
   var $=function(i){return document.getElementById(i)};
   function dk(d){return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();}
   function esc(s){return s.replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]});}
@@ -118,9 +125,52 @@ li button{background:none;border:0;color:var(--mute);font-size:20px;cursor:point
     S.log=S.log.filter(function(w){return String(w.id)!==id});save();render();
   });
   $("goal").addEventListener("change",function(){S.goal=Math.max(10,parseInt(this.value,10)||150);save();render();});
+  window.fitGet=function(){return S};
+  window.fitSet=function(n){S=n;try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}render();};
   render();
   if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){});});}
 })();
+</script>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {initializeFirestore,persistentLocalCache,doc,onSnapshot,setDoc} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+const $=id=>document.getElementById(id);
+try{
+  const {firebaseConfig}=await import("./firebase-config.js");
+  if(!firebaseConfig||String(firebaseConfig.apiKey).indexOf("PASTE")===0)throw new Error("config missing");
+  const app=initializeApp(firebaseConfig),auth=getAuth(app),db=initializeFirestore(app,{localCache:persistentLocalCache()});
+  let ref=null,unsub=null,first=true;
+  $("acct").hidden=false;
+  const msg=t=>{$("acctmsg").textContent=t};
+  const merge=(a,b)=>{const m={};(a||[]).concat(b||[]).forEach(w=>{m[w.id]=w});return Object.values(m)};
+  window.fitPush=S=>{if(ref)setDoc(ref,{log:S.log,goal:S.goal,updated:Date.now()}).catch(()=>{})};
+  onAuthStateChanged(auth,u=>{
+    if(unsub){unsub();unsub=null}
+    ref=null;first=true;
+    $("sin").hidden=!u;$("sout").hidden=!!u;
+    if(!u){msg("Sign in to keep your workouts on all your devices.");return}
+    $("who").textContent=u.email;msg("Synced. Your workouts follow you to any device.");
+    ref=doc(db,"users",u.uid);
+    unsub=onSnapshot(ref,snap=>{
+      const local=window.fitGet(),cloud=snap.data();
+      if(first){
+        first=false;
+        const log=merge(local.log,cloud&&cloud.log),goal=(cloud&&cloud.goal)||local.goal;
+        window.fitSet({log:log,goal:goal});
+        setDoc(ref,{log:log,goal:goal,updated:Date.now()}).catch(()=>{});
+        return;
+      }
+      if(snap.metadata.hasPendingWrites||!cloud)return;
+      window.fitSet({log:cloud.log||[],goal:cloud.goal||150});
+    });
+  });
+  const errs={"auth/invalid-credential":"Email or password is wrong.","auth/email-already-in-use":"This email already has an account. Tap Sign in.","auth/weak-password":"Use a password with at least 6 characters.","auth/invalid-email":"Enter a valid email address.","auth/network-request-failed":"No connection. Try again online.","auth/too-many-requests":"Too many tries. Wait a minute and try again."};
+  const go=async fn=>{try{await fn(auth,$("em").value.trim(),$("pw").value);$("pw").value=""}catch(x){msg(errs[x.code]||"Could not sign in. Try again.")}};
+  $("af").addEventListener("submit",e=>{e.preventDefault();go(signInWithEmailAndPassword)});
+  $("mk").addEventListener("click",()=>{if($("af").reportValidity())go(createUserWithEmailAndPassword)});
+  $("so").addEventListener("click",()=>signOut(auth));
+}catch(e){console.warn("Sync is off:",e&&e.message)}
 </script>
 </body>
 </html>
