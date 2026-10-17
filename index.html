@@ -53,11 +53,29 @@ li button{background:none;border:0;color:var(--mute);font-size:20px;cursor:point
 .goal input{width:80px;padding:6px 8px}
 #af{grid-template-columns:1fr;margin-top:12px}
 button.alt{grid-column:1/-1;font:600 16px "Archivo",sans-serif;background:none;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer}
+body.boot main,body.boot #welcome{display:none}
+body.guest main{display:none}
+#welcome{display:none;min-height:100vh;min-height:100dvh;align-items:center;justify-content:center;padding:24px 20px}
+body.guest #welcome{display:flex}
+.wbox{width:100%;max-width:380px;text-align:center}
+.wbox svg{width:96px;height:96px;border-radius:24px;margin-bottom:20px}
+.wname{font-size:32px;font-weight:800;letter-spacing:-.02em;color:var(--ink);margin:0 0 8px}
+.wtag{color:var(--mute);margin:0 0 24px}
+.wbox form{text-align:left}
+#wmsg{min-height:20px;margin:14px 0 0}
+.sob{margin-left:auto;background:none;border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:6px 10px;font:600 13px "Archivo",sans-serif;cursor:pointer}
 </style>
 </head>
-<body>
+<body class="boot">
+<div id="welcome"><div class="wbox">
+<svg viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="wb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#143640"/><stop offset="1" stop-color="#091218"/></linearGradient><linearGradient id="wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ff5e4"/><stop offset="1" stop-color="#1c9a9e"/></linearGradient></defs><rect width="512" height="512" fill="url(#wb)"/><path d="M371 176A140 140 0 1 0 371 336" fill="none" stroke="url(#wr)" stroke-width="44" stroke-linecap="round"/><circle cx="371" cy="176" r="22" fill="#ff7a52"/><g fill="#f2fbfa"><rect x="226" y="249" width="84" height="14" rx="7"/><rect x="200" y="220" width="22" height="72" rx="11"/><rect x="314" y="220" width="22" height="72" rx="11"/><rect x="176" y="238" width="18" height="36" rx="9"/><rect x="342" y="238" width="18" height="36" rx="9"/></g></svg>
+<h1 class="wname">Consonant-Fit</h1>
+<p class="wtag">Log every workout and see your week at a glance. Your data follows you to any device.</p>
+<form id="af" autocomplete="on"><label class="w">Email<input id="em" type="email" autocomplete="email" required></label><label class="w">Password<input id="pw" type="password" autocomplete="current-password" minlength="6" required></label><button class="go" type="submit">Sign in</button><button class="alt" id="mk" type="button">Create account</button></form>
+<p class="meta" id="wmsg" role="status"></p>
+</div></div>
 <main>
-  <header class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="lb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#143640"/><stop offset="1" stop-color="#091218"/></linearGradient><linearGradient id="lr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ff5e4"/><stop offset="1" stop-color="#1c9a9e"/></linearGradient></defs><rect width="512" height="512" fill="url(#lb)"/><path d="M371 176A140 140 0 1 0 371 336" fill="none" stroke="url(#lr)" stroke-width="44" stroke-linecap="round"/><circle cx="371" cy="176" r="22" fill="#ff7a52"/><g fill="#f2fbfa"><rect x="226" y="249" width="84" height="14" rx="7"/><rect x="200" y="220" width="22" height="72" rx="11"/><rect x="314" y="220" width="22" height="72" rx="11"/><rect x="176" y="238" width="18" height="36" rx="9"/><rect x="342" y="238" width="18" height="36" rx="9"/></g></svg><b>Consonant-Fit</b></header>
+  <header class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="lb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#143640"/><stop offset="1" stop-color="#091218"/></linearGradient><linearGradient id="lr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ff5e4"/><stop offset="1" stop-color="#1c9a9e"/></linearGradient></defs><rect width="512" height="512" fill="url(#lb)"/><path d="M371 176A140 140 0 1 0 371 336" fill="none" stroke="url(#lr)" stroke-width="44" stroke-linecap="round"/><circle cx="371" cy="176" r="22" fill="#ff7a52"/><g fill="#f2fbfa"><rect x="226" y="249" width="84" height="14" rx="7"/><rect x="200" y="220" width="22" height="72" rx="11"/><rect x="314" y="220" width="22" height="72" rx="11"/><rect x="176" y="238" width="18" height="36" rx="9"/><rect x="342" y="238" width="18" height="36" rx="9"/></g></svg><b>Consonant-Fit</b><button id="so" class="sob" type="button" hidden>Sign out</button></header>
   <h1>This week</h1>
   <div class="big"><span id="wk">0</span><small>min active</small></div>
   <div class="bar"><i id="fill" style="width:0"></i></div>
@@ -78,11 +96,6 @@ button.alt{grid-column:1/-1;font:600 16px "Archivo",sans-serif;background:none;c
   </section>
 
   <section><h2>History</h2><ul id="list"></ul></section>
-  <section id="acct" hidden><h2>Sync</h2>
-    <p class="meta" id="acctmsg">Sign in to keep your workouts on all your devices.</p>
-    <div id="sout"><form id="af" autocomplete="on"><label class="w">Email<input id="em" type="email" autocomplete="email" required></label><label class="w">Password<input id="pw" type="password" autocomplete="current-password" minlength="6" required></label><button class="go" type="submit">Sign in</button><button class="alt" id="mk" type="button">Create account</button></form></div>
-    <div id="sin" hidden><p id="who" style="margin:0 0 10px"></p><button class="alt" id="so" type="button" style="width:100%">Sign out</button></div>
-  </section>
 </main>
 <script>
 (function(){
@@ -125,6 +138,7 @@ button.alt{grid-column:1/-1;font:600 16px "Archivo",sans-serif;background:none;c
     S.log=S.log.filter(function(w){return String(w.id)!==id});save();render();
   });
   $("goal").addEventListener("change",function(){S.goal=Math.max(10,parseInt(this.value,10)||150);save();render();});
+  setTimeout(function(){document.body.classList.remove("boot")},4000);
   window.fitGet=function(){return S};
   window.fitSet=function(n){S=n;try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}render();};
   render();
@@ -135,22 +149,21 @@ button.alt{grid-column:1/-1;font:600 16px "Archivo",sans-serif;background:none;c
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {initializeFirestore,persistentLocalCache,doc,onSnapshot,setDoc} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-const $=id=>document.getElementById(id);
+const $=id=>document.getElementById(id),B=document.body;
 try{
   const {firebaseConfig}=await import("./firebase-config.js");
   if(!firebaseConfig||String(firebaseConfig.apiKey).indexOf("PASTE")===0)throw new Error("config missing");
   const app=initializeApp(firebaseConfig),auth=getAuth(app),db=initializeFirestore(app,{localCache:persistentLocalCache()});
   let ref=null,unsub=null,first=true;
-  $("acct").hidden=false;
-  const msg=t=>{$("acctmsg").textContent=t};
+  const msg=t=>{$("wmsg").textContent=t};
   const merge=(a,b)=>{const m={};(a||[]).concat(b||[]).forEach(w=>{m[w.id]=w});return Object.values(m)};
   window.fitPush=S=>{if(ref)setDoc(ref,{log:S.log,goal:S.goal,updated:Date.now()}).catch(()=>{})};
   onAuthStateChanged(auth,u=>{
     if(unsub){unsub();unsub=null}
     ref=null;first=true;
-    $("sin").hidden=!u;$("sout").hidden=!!u;
-    if(!u){msg("Sign in to keep your workouts on all your devices.");return}
-    $("who").textContent=u.email;msg("Synced. Your workouts follow you to any device.");
+    B.classList.remove("boot");B.classList.toggle("guest",!u);$("so").hidden=!u;
+    if(!u)return;
+    msg("");
     ref=doc(db,"users",u.uid);
     unsub=onSnapshot(ref,snap=>{
       const local=window.fitGet(),cloud=snap.data();
@@ -169,8 +182,8 @@ try{
   const go=async fn=>{try{await fn(auth,$("em").value.trim(),$("pw").value);$("pw").value=""}catch(x){msg(errs[x.code]||"Could not sign in. Try again.")}};
   $("af").addEventListener("submit",e=>{e.preventDefault();go(signInWithEmailAndPassword)});
   $("mk").addEventListener("click",()=>{if($("af").reportValidity())go(createUserWithEmailAndPassword)});
-  $("so").addEventListener("click",()=>signOut(auth));
-}catch(e){console.warn("Sync is off:",e&&e.message)}
+  $("so").addEventListener("click",()=>signOut(auth).then(()=>window.fitSet({log:[],goal:150})));
+}catch(e){B.classList.remove("boot");console.warn("Sync is off:",e&&e.message)}
 </script>
 </body>
 </html>
