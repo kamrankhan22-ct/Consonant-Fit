@@ -146,7 +146,7 @@ body.guest #welcome{display:flex}
   var $=function(i){return document.getElementById(i)};
   function dk(d){return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();}
   function esc(s){return s.replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]});}
-  function render(){
+  function render(){setTimeout(function(){document.dispatchEvent(new Event("fit:render"))},0);
     var now=new Date(),days=[],byDay={},i;
     for(i=6;i>=0;i--){var d=new Date(now);d.setDate(now.getDate()-i);days.push(d);byDay[dk(d)]=0;}
     var total=0;
@@ -213,6 +213,7 @@ body.guest #welcome{display:flex}
   if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){});});}
 })();
 </script>
+<script src="app.js" defer></script>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
@@ -225,7 +226,7 @@ try{
   let ref=null,unsub=null,first=true;
   const msg=t=>{$("wmsg").textContent=t};
   const merge=(a,b)=>{const m={};(a||[]).concat(b||[]).forEach(w=>{m[w.id]=w});return Object.values(m)};
-  window.fitPush=S=>{if(ref)setDoc(ref,{log:S.log,goal:S.goal,updated:Date.now()}).catch(()=>{})};
+  window.fitPush=S=>{if(ref)setDoc(ref,{log:S.log,goal:S.goal,weights:S.weights||[],updated:Date.now()}).catch(()=>{})};
   onAuthStateChanged(auth,u=>{
     if(unsub){unsub();unsub=null}
     ref=null;first=true;
@@ -237,13 +238,13 @@ try{
       const local=window.fitGet(),cloud=snap.data();
       if(first){
         first=false;
-        const log=merge(local.log,cloud&&cloud.log),goal=(cloud&&cloud.goal)||local.goal;
-        window.fitSet({log:log,goal:goal});
-        setDoc(ref,{log:log,goal:goal,updated:Date.now()}).catch(()=>{});
+        const log=merge(local.log,cloud&&cloud.log),goal=(cloud&&cloud.goal)||local.goal,weights=merge(local.weights,cloud&&cloud.weights);
+        window.fitSet({log:log,goal:goal,weights:weights});
+        setDoc(ref,{log:log,goal:goal,weights:weights,updated:Date.now()}).catch(()=>{});
         return;
       }
       if(snap.metadata.hasPendingWrites||!cloud)return;
-      window.fitSet({log:cloud.log||[],goal:cloud.goal||150});
+      window.fitSet({log:cloud.log||[],goal:cloud.goal||150,weights:cloud.weights||[]});
     });
   });
   const errs={"auth/invalid-credential":"Email or password is wrong.","auth/email-already-in-use":"This email already has an account. Tap Sign in.","auth/weak-password":"Use a password with at least 6 characters.","auth/invalid-email":"Enter a valid email address.","auth/network-request-failed":"No connection. Try again online.","auth/unauthorized-domain":"This site\u2019s address is not approved in Firebase yet.","auth/account-exists-with-different-credential":"This email is already registered another way. Use that method to sign in.","auth/too-many-requests":"Too many tries. Wait a minute and try again."};
@@ -260,7 +261,7 @@ try{
     }
   });
   getRedirectResult(auth).catch(x=>msg(errs[x.code]||"Google sign-in failed. Try again."));
-  $("so").addEventListener("click",()=>signOut(auth).then(()=>window.fitSet({log:[],goal:150})));
+  $("so").addEventListener("click",()=>signOut(auth).then(()=>window.fitSet({log:[],goal:150,weights:[]})));
 }catch(e){B.classList.remove("boot");console.warn("Sync is off:",e&&e.message)}
 </script>
 </body>
