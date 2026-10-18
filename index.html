@@ -231,13 +231,19 @@ body.guest #welcome{display:flex}
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import {initializeFirestore,persistentLocalCache,doc,onSnapshot,setDoc} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import {initializeFirestore,persistentLocalCache,doc,onSnapshot,setDoc,collection,query,where,limit,getDocs,deleteDoc} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 const $=id=>document.getElementById(id),B=document.body;
 try{
   const {firebaseConfig}=await import("./firebase-config.js");
   if(!firebaseConfig||String(firebaseConfig.apiKey).indexOf("PASTE")===0)throw new Error("config missing");
   const app=initializeApp(firebaseConfig),auth=getAuth(app),db=initializeFirestore(app,{localCache:persistentLocalCache()});
   let ref=null,unsub=null,first=true;
+  window.fitLB={
+    uid:()=>auth.currentUser&&auth.currentUser.uid,
+    publish:d=>setDoc(doc(db,"leaderboard",auth.currentUser.uid),d),
+    remove:()=>deleteDoc(doc(db,"leaderboard",auth.currentUser.uid)),
+    fetch:wk=>getDocs(query(collection(db,"leaderboard"),where("weekKey","==",wk),limit(100))).then(s=>s.docs.map(d=>Object.assign({},d.data(),{uid:d.id})))
+  };
   const msg=t=>{$("wmsg").textContent=t};
   const merge=(a,b)=>{const m={};(a||[]).concat(b||[]).forEach(w=>{m[w.id]=w});return Object.values(m)};
   window.fitPush=S=>{if(ref)setDoc(ref,{log:S.log,goal:S.goal,weights:S.weights||[],profile:S.profile||null,plan:S.plan||null,updated:Date.now()}).catch(()=>{})};
