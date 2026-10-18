@@ -225,6 +225,126 @@
   document.addEventListener("fit:auth", setWho);
   setWho();
 
+  // ---- Settings page + profile photo ----
+  var ss = document.createElement("style");
+  ss.textContent =
+    ".x-hav{margin-left:auto;flex:none;width:44px;height:44px;padding:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:50%;background:var(--accent) center/cover no-repeat;color:var(--surface);font:800 18px \"Archivo\",sans-serif;text-transform:uppercase;cursor:pointer}" +
+    ".x-burger{margin-left:0}" +
+    ".x-av{background-size:cover;background-position:center}.x-big{width:96px;height:96px;font-size:36px}" +
+    "#x-set{position:fixed;inset:0;z-index:70;background:var(--bg);overflow-y:auto;visibility:hidden;transform:translateY(100%);transition:transform .25s ease,visibility 0s .25s}" +
+    "#x-set.open{visibility:visible;transform:none;transition-delay:0s,0s}" +
+    ".x-sheet{max-width:520px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(32px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:16px}" +
+    ".x-pro{display:flex;flex-direction:column;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px}" +
+    ".x-pbtns{display:flex;gap:8px}" +
+    ".x-f{display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--mute);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}" +
+    ".x-seg{display:flex;gap:6px}" +
+    ".x-seg button{flex:1;font:600 14px \"Archivo\",sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;cursor:pointer}" +
+    ".x-seg button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--surface)}" +
+    "@media(prefers-reduced-motion:reduce){#x-set{transition:none}}";
+  document.head.appendChild(ss);
+
+  var sh = document.createElement("div");
+  sh.id = "x-set";
+  sh.innerHTML = '<div class="x-sheet" role="dialog" aria-modal="true" aria-label="Settings">' +
+    '<div class="x-top"><b>Settings</b><button type="button" class="x-close" id="x-sclose" aria-label="Close settings">\u00d7</button></div>' +
+    '<div class="x-pro"><span class="x-av x-big" id="x-sav">?</span><div class="x-pbtns"><button class="chip" id="x-up" type="button">Change photo</button><button class="chip" id="x-rm" type="button">Remove</button></div>' +
+    '<input id="x-file" type="file" accept="image/*" hidden></div>' +
+    '<label class="x-f">Display name<input id="x-pn" maxlength="30" placeholder="Your name" autocomplete="name"></label>' +
+    '<label class="x-f">Weekly goal (minutes)<input id="x-gl" type="number" min="10" step="10" inputmode="numeric"></label>' +
+    '<div class="x-f"><span>Appearance</span><div class="x-seg" role="group" aria-label="Appearance"><button type="button" data-t="">Auto</button><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button></div></div>' +
+    '<p class="meta" id="x-sn" role="status"></p></div>';
+  document.body.appendChild(sh);
+
+  var hav = document.createElement("button");
+  hav.type = "button"; hav.className = "x-hav"; hav.setAttribute("aria-label", "Open settings");
+  if (brand) brand.insertBefore(hav, burger);
+
+  function okPhoto(p) { return !!(p && typeof p.photo === "string" && /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(p.photo)); }
+  function paint(el, S, fb) {
+    var pr = S.profile || {};
+    if (okPhoto(pr)) { el.style.backgroundImage = 'url("' + pr.photo + '")'; el.textContent = ""; }
+    else { el.style.backgroundImage = ""; el.textContent = ((pr.name || fb || "?").trim().charAt(0)) || "?"; }
+  }
+  function paintAll() {
+    var S = window.fitGet(), u = window.fitUser, mail = (u && u.email) || "";
+    var fb = (u && u.name) || mail.split("@")[0] || "";
+    paint(hav, S, fb); paint($("x-av"), S, fb); paint($("x-sav"), S, fb);
+    $("x-name").textContent = (S.profile && S.profile.name) || fb || "Local only";
+    $("x-rm").hidden = !okPhoto(S.profile || {});
+  }
+  function note(t) { $("x-sn").textContent = t; }
+  function toThumb(file, cb) {
+    var img = new Image(), url = URL.createObjectURL(file);
+    img.onload = function () {
+      var s = Math.min(img.width, img.height), c = document.createElement("canvas");
+      c.width = c.height = 192;
+      c.getContext("2d").drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 192, 192);
+      URL.revokeObjectURL(url); cb(c.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); cb(null); };
+    img.src = url;
+  }
+  $("x-up").addEventListener("click", function () { $("x-file").click(); });
+  $("x-file").addEventListener("change", function () {
+    var f = this.files && this.files[0]; this.value = "";
+    if (!f) return;
+    if (!/^image\//.test(f.type)) { note("Please choose an image."); return; }
+    toThumb(f, function (d) {
+      if (!d) { note("Could not read that image."); return; }
+      var S = window.fitGet(); S.profile = S.profile || {}; S.profile.photo = d;
+      commit(S); note("Photo updated.");
+    });
+  });
+  $("x-rm").addEventListener("click", function () {
+    var S = window.fitGet(); if (S.profile) { S.profile.photo = null; commit(S); note("Photo removed."); }
+  });
+  $("x-pn").addEventListener("change", function () {
+    var S = window.fitGet(); S.profile = S.profile || {}; S.profile.name = this.value.trim().slice(0, 30); commit(S);
+  });
+  $("x-gl").addEventListener("change", function () {
+    var S = window.fitGet(); S.goal = Math.max(10, parseInt(this.value, 10) || 150); commit(S);
+  });
+
+  function applyTheme(t) {
+    var r = document.documentElement;
+    if (t) r.setAttribute("data-theme", t); else r.removeAttribute("data-theme");
+    try { if (t) localStorage.setItem("fit-theme", t); else localStorage.removeItem("fit-theme"); } catch (e) {}
+  }
+  function markTheme() {
+    var t = document.documentElement.getAttribute("data-theme") || "";
+    sh.querySelectorAll(".x-seg button").forEach(function (b) { b.setAttribute("aria-pressed", String((b.getAttribute("data-t") || "") === t)); });
+  }
+  sh.querySelector(".x-seg").addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("button"); if (!b) return;
+    applyTheme(b.getAttribute("data-t") || ""); markTheme();
+  });
+
+  var setFocus = null;
+  function openSet() {
+    setFocus = document.activeElement;
+    var S = window.fitGet();
+    $("x-pn").value = (S.profile && S.profile.name) || ""; $("x-gl").value = S.goal || 150;
+    note(""); markTheme(); paintAll();
+    sh.classList.add("open"); document.body.style.overflow = "hidden";
+    setTimeout(function () { $("x-sclose").focus(); }, 50);
+  }
+  function closeSet() {
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    sh.classList.remove("open"); document.body.style.overflow = "";
+    if (setFocus && setFocus.focus) setFocus.focus({ preventScroll: true });
+  }
+  $("x-sclose").addEventListener("click", closeSet);
+  hav.addEventListener("click", openSet);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && sh.classList.contains("open")) closeSet(); });
+  var sb = document.createElement("button");
+  sb.type = "button"; sb.className = "x-act"; sb.id = "x-setb"; sb.textContent = "Settings";
+  $("x-acts").insertBefore(sb, $("x-acts").firstChild);
+  sb.addEventListener("click", function () { closeNav(); openSet(); });
+
+  document.addEventListener("fit:render", paintAll);
+  document.addEventListener("fit:auth", paintAll);
+  paintAll();
+
   document.addEventListener("fit:render", update);
   update();
 })();
