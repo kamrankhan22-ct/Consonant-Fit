@@ -360,6 +360,126 @@
   document.addEventListener("fit:render", updatePlan);
   updatePlan();
 
+  // ---- Leaderboard ----
+  var lcs = document.createElement("style");
+  lcs.textContent =
+    ".lb-list{margin:12px 0 0}.lb-list li{gap:12px}" +
+    ".lb-list li.me{background:var(--bg);border-radius:10px;padding-left:8px;padding-right:8px;margin:0 -8px}" +
+    ".lb-r{flex:none;width:24px;text-align:center;font-weight:800;color:var(--mute)}" +
+    ".lb-list .lb-av{width:36px;height:36px;font-size:15px}" +
+    ".lb-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}" +
+    ".lb-v{flex:none;font-weight:800;font-variant-numeric:tabular-nums}" +
+    "#x-lbv .x-seg{margin-top:2px}";
+  document.head.appendChild(lcs);
+  var lbSec = sec("x-lb", "Leaderboard", '<div id="x-lbv"></div>');
+  rest.before(lbSec);
+
+  var lbTab = "wMin", lbList = [], lbMsg = "", lbBusy = false, lastPub = "", pubTimer = 0, thumbSrc = "", thumbOut = null;
+  var LBT = [["wMin", "Minutes"], ["wCnt", "Workouts"], ["streak", "Streak"]];
+  function el(t, c, x) { var e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; }
+  function utcMon(t) { var d = new Date(t), k = (d.getUTCDay() + 6) % 7; return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - k); }
+  function myStats(S) {
+    var m0 = utcMon(Date.now()), cnt = 0, min = 0, days = {};
+    (S.log || []).forEach(function (w) { if (w.t >= m0 && w.t < m0 + 7 * D) { cnt++; min += w.mins; } days[dayKey(w.t)] = 1; });
+    var s = 0, c = new Date(); if (!days[dayKey(c.getTime())]) c.setDate(c.getDate() - 1);
+    while (days[dayKey(c.getTime())]) { s++; c.setDate(c.getDate() - 1); }
+    return { wk: new Date(m0).toISOString().slice(0, 10), wMin: Math.min(10080, min), wCnt: Math.min(200, cnt), streak: Math.min(3650, s) };
+  }
+  function myName(S) { var u = window.fitUser; return (String((S.profile && S.profile.name) || (u && u.name) || "Athlete").trim().slice(0, 30)) || "Athlete"; }
+  function avFill(e, photo, name) {
+    if (typeof photo === "string" && /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(photo)) e.style.backgroundImage = 'url("' + photo + '")';
+    else e.textContent = (String(name || "?").trim().charAt(0)) || "?";
+  }
+  function thumb(src, cb) {
+    if (!src || !/^data:image\/jpeg;base64,/.test(src)) { cb(null); return; }
+    if (thumbSrc === src) { cb(thumbOut); return; }
+    var im = new Image();
+    im.onload = function () {
+      var c = document.createElement("canvas"); c.width = c.height = 64;
+      c.getContext("2d").drawImage(im, 0, 0, 64, 64);
+      thumbSrc = src; thumbOut = c.toDataURL("image/jpeg", 0.7); cb(thumbOut);
+    };
+    im.onerror = function () { cb(null); };
+    im.src = src;
+  }
+  function publish() {
+    var S = window.fitGet();
+    if (!window.fitLB || !window.fitUser || !(S.profile && S.profile.lb)) return;
+    var st = myStats(S), name = myName(S);
+    thumb(S.profile.photo, function (ph) {
+      var d = { name: name, photo: ph || null, weekKey: st.wk, wMin: st.wMin, wCnt: st.wCnt, streak: st.streak, updated: Date.now() };
+      var sig = JSON.stringify([d.name, d.photo, d.weekKey, d.wMin, d.wCnt, d.streak]);
+      if (sig === lastPub) return;
+      window.fitLB.publish(d).then(function () { lastPub = sig; lbLoad(); }).catch(function () {});
+    });
+  }
+  function schedulePublish() { clearTimeout(pubTimer); pubTimer = setTimeout(publish, 1500); }
+  function lbLoad() {
+    var S = window.fitGet();
+    if (!window.fitLB || !window.fitUser || !(S.profile && S.profile.lb)) return;
+    lbBusy = true; lbMsg = ""; renderLB();
+    window.fitLB.fetch(myStats(S).wk).then(function (l) { lbList = l; lbBusy = false; renderLB(); })
+      .catch(function (e) {
+        lbBusy = false;
+        lbMsg = e && e.code === "permission-denied" ? "The leaderboard needs the updated Firestore rules. Publish them in the Firebase console." : "Could not load the leaderboard. Check your connection and try again.";
+        renderLB();
+      });
+  }
+  function setLB(on) {
+    var S = window.fitGet(); S.profile = S.profile || {}; S.profile.lb = !!on;
+    clearTimeout(pubTimer); lastPub = "";
+    if (!on) { lbList = []; if (window.fitLB && window.fitUser) window.fitLB.remove().catch(function () {}); }
+    commit(S);
+  }
+  function renderLB() {
+    var S = window.fitGet(), box = $("x-lbv"), u = window.fitUser, joined = !!(S.profile && S.profile.lb);
+    box.textContent = "";
+    if (!window.fitLB || !u) { box.appendChild(el("p", "meta", "Sign in to see how you rank against other Consonant-Fit users.")); return; }
+    if (!joined) {
+      var p = el("p", "meta", "Compete on weekly minutes, workouts and streak. If you join, your display name (" + myName(S) + "), photo and weekly totals are visible to other signed-in users. You can leave any time. Totals are self-reported.");
+      p.style.margin = "0 0 12px"; box.appendChild(p);
+      var jb = el("button", "chip", "Join leaderboard"); jb.type = "button";
+      jb.addEventListener("click", function () { setLB(true); }); box.appendChild(jb);
+      return;
+    }
+    var seg = el("div", "x-seg"); seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "Rank by");
+    LBT.forEach(function (t) {
+      var b = el("button", null, t[1]); b.type = "button"; b.setAttribute("aria-pressed", String(lbTab === t[0]));
+      b.addEventListener("click", function () { lbTab = t[0]; renderLB(); }); seg.appendChild(b);
+    });
+    box.appendChild(seg);
+    var me = window.fitLB.uid(), st = myStats(S);
+    var mine = { uid: me, name: myName(S), photo: S.profile.photo || null, wMin: st.wMin, wCnt: st.wCnt, streak: st.streak };
+    var list = lbList.filter(function (r) { return r.uid !== me; }).concat([mine]);
+    var key = lbTab;
+    list.sort(function (x, y) { return (Number(y[key]) || 0) - (Number(x[key]) || 0) || (Number(y.wMin) || 0) - (Number(x.wMin) || 0) || String(x.name).localeCompare(String(y.name)); });
+    function val(r) { var v = Number(r[key]) || 0; return key === "wMin" ? v + " min" : key === "streak" ? v + (v === 1 ? " day" : " days") : String(v); }
+    function row(r, i) {
+      var li = el("li", r.uid === me ? "me" : ""), rk = el("span", "lb-r", String(i + 1));
+      if (i === 0) rk.style.color = "var(--heat)"; else if (i < 3) rk.style.color = "var(--accent)";
+      var av = el("span", "x-av lb-av"); avFill(av, r.photo, r.name);
+      li.appendChild(rk); li.appendChild(av);
+      li.appendChild(el("span", "lb-n", String(r.name || "Athlete") + (r.uid === me ? " (you)" : "")));
+      li.appendChild(el("span", "lb-v", val(r)));
+      return li;
+    }
+    var ul = el("ul", "lb-list");
+    list.slice(0, 20).forEach(function (r, i) { ul.appendChild(row(r, i)); });
+    var mi = list.indexOf(mine);
+    if (mi >= 20) ul.appendChild(row(mine, mi));
+    box.appendChild(ul);
+    var note2 = lbBusy ? "Loading\u2026" : lbMsg || (list.length === 1 ? "You are the first one here this week. Invite a friend!" : "Resets every Monday (UTC).");
+    var n = el("p", "meta", note2); n.style.margin = "10px 0 0"; box.appendChild(n);
+    var bt = el("div", "x-btns"), rf = el("button", "chip", "Refresh"), lv = el("button", "chip x-danger", "Leave leaderboard");
+    rf.type = lv.type = "button";
+    rf.addEventListener("click", lbLoad);
+    lv.addEventListener("click", function () { if (confirm("Leave the leaderboard? Your entry will be removed.")) setLB(false); });
+    bt.appendChild(rf); bt.appendChild(lv); box.appendChild(bt);
+  }
+  document.addEventListener("fit:render", function () { renderLB(); schedulePublish(); });
+  document.addEventListener("fit:auth", function () { lastPub = ""; renderLB(); schedulePublish(); lbLoad(); });
+  renderLB();
+
   // ---- Hamburger menu ----
   var brand = document.querySelector(".brand"), so = $("so"), exp = $("exp");
   var ms = document.createElement("style");
@@ -402,7 +522,7 @@
   var lastFocus = null;
   function buildLinks() {
     var box = $("x-links"); box.innerHTML = "";
-    [["Weekly summary", sum], ["Log a workout", $("f") && $("f").parentNode], ["Progress", prog], ["Body weight", body], ["Weight gain plan", gain], ["Workout plan", sched], ["Rest timer", $("rest")], ["History", $("list").parentNode]].forEach(function (it) {
+    [["Weekly summary", sum], ["Log a workout", $("f") && $("f").parentNode], ["Progress", prog], ["Body weight", body], ["Weight gain plan", gain], ["Workout plan", sched], ["Leaderboard", lbSec], ["Rest timer", $("rest")], ["History", $("list").parentNode]].forEach(function (it) {
       if (!it[1] || it[1].hidden) return;
       var b = document.createElement("button");
       b.type = "button"; b.textContent = it[0];
@@ -476,6 +596,7 @@
     '<div class="x-f"><span>Appearance</span><div class="x-seg" role="group" aria-label="Appearance"><button type="button" data-t="">Auto</button><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button></div></div>' +
     '<div class="x-f"><span>Accent color</span><div class="x-sw" id="x-sw" role="group" aria-label="Accent color"></div></div>' +
     '<label class="x-f x-row">Vibrate when rest timer ends<input type="checkbox" id="x-vb"></label>' +
+    '<label class="x-f x-row">Show me on the leaderboard<input type="checkbox" id="x-lb"></label>' +
     '<div class="x-f"><span>Your data</span><p class="meta" id="x-ds" style="margin:0"></p><div class="x-pbtns"><button class="chip" id="x-bk" type="button">Download backup</button><button class="chip" id="x-rs" type="button">Restore backup</button><button class="chip x-danger" id="x-da" type="button">Delete all data</button></div><input id="x-rf" type="file" accept="application/json,.json" hidden></div>' +
     '<p class="meta" id="x-sn" role="status"></p></div>';
   document.body.appendChild(sh);
@@ -607,12 +728,14 @@
     commit(S); statsLine(); note("All workout data deleted.");
   });
 
+  $("x-lb").addEventListener("change", function () { setLB(this.checked); });
+
   var setFocus = null;
   function openSet() {
     setFocus = document.activeElement;
     var S = window.fitGet();
     $("x-pn").value = (S.profile && S.profile.name) || ""; $("x-gl").value = S.goal || 150;
-    note(""); markTheme(); markAccent(); $("x-vb").checked = vibOnS(); statsLine(); paintAll();
+    note(""); markTheme(); markAccent(); $("x-vb").checked = vibOnS(); $("x-lb").checked = !!(S.profile && S.profile.lb); statsLine(); paintAll();
     sh.classList.add("open"); document.body.style.overflow = "hidden";
     setTimeout(function () { $("x-sclose").focus(); }, 50);
   }
