@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#0f8b8d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Consonant-Fit">
-<script>try{var t=localStorage.getItem("fit-theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+<script>try{var t=localStorage.getItem("fit-theme");if(t)document.documentElement.setAttribute("data-theme",t);var ac=localStorage.getItem("fit-accent");if(ac)document.documentElement.setAttribute("data-accent",ac)}catch(e){}</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -54,6 +54,18 @@ li button{background:none;border:0;color:var(--mute);font-size:20px;cursor:point
 .goal input{width:80px;padding:6px 8px}
 #af{grid-template-columns:1fr;margin-top:12px}
 button.alt{grid-column:1/-1;font:600 16px "Archivo",sans-serif;background:none;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer}
+:root[data-accent="violet"]{--accent:#6d4aff}
+:root[data-accent="blue"]{--accent:#2563eb}
+:root[data-accent="rose"]{--accent:#d6336c}
+@media(prefers-color-scheme:dark){
+:root[data-accent="violet"]:not([data-theme="light"]){--accent:#a592ff}
+:root[data-accent="blue"]:not([data-theme="light"]){--accent:#6ea0ff}
+:root[data-accent="rose"]:not([data-theme="light"]){--accent:#ff7fa8}
+}
+:root[data-accent="violet"][data-theme="dark"]{--accent:#a592ff}
+:root[data-accent="blue"][data-theme="dark"]{--accent:#6ea0ff}
+:root[data-accent="rose"][data-theme="dark"]{--accent:#ff7fa8}
+:root[data-theme="dark"] button.go{color:#06181b}
 body.boot main,body.boot #welcome{display:none}
 body.guest main{display:none}
 #welcome{display:none;min-height:100vh;min-height:100dvh;align-items:center;justify-content:center;padding:24px 20px}
@@ -193,9 +205,10 @@ body.guest #welcome{display:flex}
     $("name").value=n;if(last){$("mins").value=last.mins;$("sr").value=last.sr||"";$("kg").value=last.kg||""}
     $("mins").focus();
   });
+  function vibOn(){try{return localStorage.getItem("fit-vib")!=="0"}catch(e){return true}}
   var rEnd=0,rI=0;
   function rShow(){var l=Math.max(0,Math.ceil((rEnd-Date.now())/1000));$("rt").textContent=Math.floor(l/60)+":"+("0"+l%60).slice(-2);
-    if(l<=0){clearInterval(rI);rI=0;$("rx").hidden=true;$("rt").textContent="Go!";$("rest").classList.add("done");if(navigator.vibrate){try{navigator.vibrate([200,100,200])}catch(e){}}}}
+    if(l<=0){clearInterval(rI);rI=0;$("rx").hidden=true;$("rt").textContent="Go!";$("rest").classList.add("done");if(navigator.vibrate&&vibOn()){try{navigator.vibrate([200,100,200])}catch(e){}}}}
   $("rest").addEventListener("click",function(e){
     var s=e.target.getAttribute&&e.target.getAttribute("data-s");
     if(s){rEnd=Date.now()+s*1000;$("rest").classList.remove("done");$("rx").hidden=false;clearInterval(rI);rI=setInterval(rShow,250);rShow()}
