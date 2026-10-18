@@ -1,22 +1,283 @@
-const CACHE = "consonant-fit-v12";
-const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg"];
-self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
-});
-self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys()
-    .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-    .then(() => self.clients.claim()));
-});
-self.addEventListener("fetch", e => {
-  if (e.request.method !== "GET") return;
-  e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-      if (res.ok && (new URL(e.request.url).origin === location.origin || new URL(e.request.url).hostname === "www.gstatic.com")) {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, copy));
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Consonant-Fit</title>
+<meta name="theme-color" content="#0f8b8d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Consonant-Fit">
+<script>try{var t=localStorage.getItem("fit-theme");if(t)document.documentElement.setAttribute("data-theme",t);var ac=localStorage.getItem("fit-accent");if(ac)document.documentElement.setAttribute("data-accent",ac)}catch(e){}</script>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef2f4;--surface:#fff;--ink:#14232b;--mute:#5d707a;--line:#d3dde2;--accent:#0f8b8d;--heat:#e4572e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1a20;--surface:#162830;--ink:#e8f0f3;--mute:#8fa5af;--line:#27404b;--accent:#3cc4c6;--heat:#ff7a52;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e1a20;--surface:#162830;--ink:#e8f0f3;--mute:#8fa5af;--line:#27404b;--accent:#3cc4c6;--heat:#ff7a52;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.45 "Archivo",system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:520px;margin:0 auto;padding:20px 16px 40px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+.brand svg{width:38px;height:38px;border-radius:10px;flex:none}
+.brand b{font-size:20px;font-weight:800;letter-spacing:-.01em}
+h1{font-size:15px;font-weight:600;color:var(--mute);margin:0 0 4px}
+.big{font-size:56px;font-weight:800;line-height:1;letter-spacing:-.03em}
+.big small{font-size:18px;font-weight:600;color:var(--mute);letter-spacing:0;margin-left:6px}
+.bar{height:10px;border-radius:5px;background:var(--line);margin:14px 0 6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:5px;transition:width .4s}
+.row{display:flex;justify-content:space-between;gap:12px;color:var(--mute);font-size:14px}
+.row b{color:var(--ink)}
+section{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:14px}
+h2{font-size:16px;font-weight:800;margin:0 0 12px}
+.chart{display:flex;align-items:flex-end;gap:8px;height:110px}
+.chart div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:12px;color:var(--mute)}
+.chart span{display:block;width:100%;background:var(--accent);border-radius:5px 5px 2px 2px;min-height:3px;margin-bottom:4px}
+.chart .today span{background:var(--heat)}
+form{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+label{display:flex;flex-direction:column;font-size:13px;color:var(--mute);gap:4px}
+label.w{grid-column:1/-1}
+input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;width:100%;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.go{grid-column:1/-1;font:600 16px "Archivo",sans-serif;background:var(--accent);color:#fff;border:0;border-radius:10px;padding:13px;cursor:pointer}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) button.go{color:#06181b}}
+ul{list-style:none;margin:0;padding:0}
+li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line)}
+li:first-child{border-top:0}
+li p{margin:0}.meta{font-size:13px;color:var(--mute)}
+li button{background:none;border:0;color:var(--mute);font-size:20px;cursor:pointer;padding:4px 8px;border-radius:6px}
+.empty{color:var(--mute);margin:0}
+.goal{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px;color:var(--mute)}
+.goal input{width:80px;padding:6px 8px}
+#af{grid-template-columns:1fr;margin-top:12px}
+button.alt{grid-column:1/-1;font:600 16px "Archivo",sans-serif;background:none;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer}
+:root[data-accent="violet"]{--accent:#6d4aff}
+:root[data-accent="blue"]{--accent:#2563eb}
+:root[data-accent="rose"]{--accent:#d6336c}
+@media(prefers-color-scheme:dark){
+:root[data-accent="violet"]:not([data-theme="light"]){--accent:#a592ff}
+:root[data-accent="blue"]:not([data-theme="light"]){--accent:#6ea0ff}
+:root[data-accent="rose"]:not([data-theme="light"]){--accent:#ff7fa8}
+}
+:root[data-accent="violet"][data-theme="dark"]{--accent:#a592ff}
+:root[data-accent="blue"][data-theme="dark"]{--accent:#6ea0ff}
+:root[data-accent="rose"][data-theme="dark"]{--accent:#ff7fa8}
+:root[data-theme="dark"] button.go{color:#06181b}
+body.boot main,body.boot #welcome{display:none}
+body.guest main{display:none}
+#welcome{display:none;min-height:100vh;min-height:100dvh;align-items:center;justify-content:center;padding:24px 20px}
+body.guest #welcome{display:flex}
+.wbox{width:100%;max-width:380px;text-align:center}
+.wbox>svg{width:96px;height:96px;border-radius:24px;margin-bottom:20px}
+.gbtn svg{width:16px;height:16px;flex:none;border-radius:0;margin:0}
+.wname{font-size:32px;font-weight:800;letter-spacing:-.02em;color:var(--ink);margin:0 0 8px}
+.wtag{color:var(--mute);margin:0 0 24px}
+.wbox form{text-align:left}
+#wmsg{min-height:20px;margin:14px 0 0}
+.sob{margin-left:auto;background:none;border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:6px 10px;font:600 13px "Archivo",sans-serif;cursor:pointer}
+.gbtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 14px "Archivo",sans-serif;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 16px;cursor:pointer}
+.or{display:flex;align-items:center;gap:10px;color:var(--mute);font-size:12px;margin:12px 0}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+#intro{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#143640,#091218);transition:opacity .5s;animation:iout .5s 3.5s forwards}
+#intro.hide{opacity:0;visibility:hidden;pointer-events:none}
+@keyframes iout{to{opacity:0;visibility:hidden;pointer-events:none}}
+.ibox{text-align:center}
+.ibox svg{width:128px;height:128px;display:block;margin:0 auto 22px}
+.iring{stroke-dasharray:720;stroke-dashoffset:720;animation:idraw 1s .2s ease-out forwards}
+.ipop{opacity:0;transform-origin:256px 256px;animation:ipop .5s .9s ease-out forwards}
+.iname,.itag{opacity:0;transform:translateY(8px);animation:irise .6s ease-out forwards}
+.iname{font:800 32px "Archivo",system-ui,sans-serif;letter-spacing:-.02em;color:#e8f0f3;animation-delay:.9s}
+.itag{font:400 15px "Archivo",system-ui,sans-serif;color:#8fa5af;margin-top:6px;animation-delay:1.2s}
+@keyframes idraw{to{stroke-dashoffset:0}}
+@keyframes ipop{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+@keyframes irise{to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.iring{animation:none;stroke-dashoffset:0}.ipop,.iname,.itag{animation:none;opacity:1;transform:none}}
+.chips{grid-column:1/-1;display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.chips:empty{display:none}
+.chips button,.chip,.rrow button{flex:none;font:600 13px "Archivo",sans-serif;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer}
+.rrow{display:flex;align-items:center;gap:8px}
+#rt{font-weight:800;font-size:28px;min-width:76px;font-variant-numeric:tabular-nums}
+#rest.done #rt{color:var(--heat)}
+.hh{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.hh h2{margin:0}
+.pr{font-size:11px;font-weight:800;color:#1a0a05;background:var(--heat);border-radius:6px;padding:1px 6px;margin-left:8px;vertical-align:middle}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:50;display:flex;align-items:center;gap:16px;background:var(--ink);color:var(--bg);border-radius:12px;padding:10px 16px;font-size:14px}
+#toast[hidden]{display:none}
+#toast button{background:none;border:0;color:inherit;font:800 14px "Archivo",sans-serif;text-decoration:underline;cursor:pointer;padding:0}
+</style>
+</head>
+<body class="boot">
+<div id="intro" role="presentation"><div class="ibox">
+<svg viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="ir" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ff5e4"/><stop offset="1" stop-color="#1c9a9e"/></linearGradient></defs><path class="iring" d="M371 176A140 140 0 1 0 371 336" fill="none" stroke="url(#ir)" stroke-width="44" stroke-linecap="round"/><circle class="ipop" cx="371" cy="176" r="22" fill="#ff7a52"/><g class="ipop" fill="#f2fbfa"><rect x="226" y="249" width="84" height="14" rx="7"/><rect x="200" y="220" width="22" height="72" rx="11"/><rect x="314" y="220" width="22" height="72" rx="11"/><rect x="176" y="238" width="18" height="36" rx="9"/><rect x="342" y="238" width="18" height="36" rx="9"/></g></svg>
+<div class="iname">Consonant-Fit</div><div class="itag">Train. Track. Repeat.</div>
+</div></div>
+<script>(function(){var el=document.getElementById("intro");if(!el)return;var seen=false;try{seen=sessionStorage.getItem("fit-intro")==="1"}catch(e){}if(seen){el.remove();return}try{sessionStorage.setItem("fit-intro","1")}catch(e){}function done(){el.classList.add("hide");setTimeout(function(){el.remove()},500)}el.addEventListener("click",done);setTimeout(done,2300)})();</script>
+<div id="welcome"><div class="wbox">
+<svg viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="wb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#143640"/><stop offset="1" stop-color="#091218"/></linearGradient><linearGradient id="wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ff5e4"/><stop offset="1" stop-color="#1c9a9e"/></linearGradient></defs><rect width="512" height="512" fill="url(#wb)"/><path d="M371 176A140 140 0 1 0 371 336" fill="none" stroke="url(#wr)" stroke-width="44" stroke-linecap="round"/><circle cx="371" cy="176" r="22" fill="#ff7a52"/><g fill="#f2fbfa"><rect x="226" y="249" width="84" height="14" rx="7"/><rect x="200" y="220" width="22" height="72" rx="11"/><rect x="314" y="220" width="22" height="72" rx="11"/><rect x="176" y="238" width="18" height="36" rx="9"/><rect x="342" y="238" width="18" height="36" rx="9"/></g></svg>
+<h1 class="wname">Consonant-Fit</h1>
+<p class="wtag">Log every workout and see your week at a glance. Your data follows you to any device.</p>
+<button class="gbtn" id="gg" type="button"><svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg><span>Continue with Google</span></button>
+<p class="or">or use email</p>
+<form id="af" autocomplete="on"><label class="w">Email<input id="em" type="email" autocomplete="email" required></label><label class="w">Password<input id="pw" type="password" autocomplete="current-password" minlength="6" required></label><button class="go" type="submit">Sign in</button><button class="alt" id="mk" type="button">Create account</button></form>
+<p class="meta" id="wmsg" role="status"></p>
+</div></div>
+<main>
+  <header class="brand"><svg viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="lb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#143640"/><stop offset="1" stop-color="#091218"/></linearGradient><linearGradient id="lr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ff5e4"/><stop offset="1" stop-color="#1c9a9e"/></linearGradient></defs><rect width="512" height="512" fill="url(#lb)"/><path d="M371 176A140 140 0 1 0 371 336" fill="none" stroke="url(#lr)" stroke-width="44" stroke-linecap="round"/><circle cx="371" cy="176" r="22" fill="#ff7a52"/><g fill="#f2fbfa"><rect x="226" y="249" width="84" height="14" rx="7"/><rect x="200" y="220" width="22" height="72" rx="11"/><rect x="314" y="220" width="22" height="72" rx="11"/><rect x="176" y="238" width="18" height="36" rx="9"/><rect x="342" y="238" width="18" height="36" rx="9"/></g></svg><b>Consonant-Fit</b><button id="so" class="sob" type="button" hidden>Sign out</button></header>
+  <h1>This week</h1>
+  <div class="big"><span id="wk">0</span><small>min active</small></div>
+  <div class="bar"><i id="fill" style="width:0"></i></div>
+  <div class="row"><span><b id="pct">0%</b> of weekly goal</span><span><b id="streak">0</b>-day streak</span></div>
+  <div class="goal"><label for="goal" style="flex-direction:row;align-items:center;gap:8px">Weekly goal (min)</label><input id="goal" type="number" min="10" step="10" inputmode="numeric"></div>
+
+  <section><h2>Last 7 days</h2><div class="chart" id="chart"></div></section>
+
+  <section>
+    <h2>Log a workout</h2>
+    <form id="f">
+      <div class="chips" id="chips"></div>
+      <label class="w">Exercise<input id="name" required maxlength="40" placeholder="Bench press, run, yoga"></label>
+      <label>Minutes<input id="mins" type="number" min="1" max="600" required inputmode="numeric"></label>
+      <label>Sets × reps<input id="sr" placeholder="3x10"></label>
+      <label>Weight (kg)<input id="kg" type="number" min="0" step="0.5" inputmode="decimal"></label>
+      <button class="go" type="submit">Save workout</button>
+    </form>
+  </section>
+
+  <section id="rest"><h2>Rest timer</h2><div class="rrow"><span id="rt">0:00</span><button type="button" data-s="60">1:00</button><button type="button" data-s="90">1:30</button><button type="button" data-s="120">2:00</button><button type="button" id="rx" hidden>Stop</button></div></section>
+
+  <section><div class="hh"><h2>History</h2><button class="chip" id="exp" type="button">Export CSV</button></div><ul id="list"></ul></section>
+</main>
+<div id="toast" hidden><span id="tmsg"></span><button id="undo" type="button">Undo</button></div>
+<script>
+(function(){
+  var KEY="fit-v1",S={log:[],goal:150};
+  try{var raw=localStorage.getItem(KEY);if(raw){var p=JSON.parse(raw);if(p&&Array.isArray(p.log))S=p;}}catch(e){}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){} if(window.fitPush)window.fitPush(S);}
+  var $=function(i){return document.getElementById(i)};
+  function dk(d){return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();}
+  function esc(s){return s.replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]});}
+  function render(){setTimeout(function(){document.dispatchEvent(new Event("fit:render"))},0);
+    var now=new Date(),days=[],byDay={},i;
+    for(i=6;i>=0;i--){var d=new Date(now);d.setDate(now.getDate()-i);days.push(d);byDay[dk(d)]=0;}
+    var total=0;
+    S.log.forEach(function(w){var k=dk(new Date(w.t));if(k in byDay){byDay[k]+=w.mins;total+=w.mins;}});
+    $("wk").textContent=total;
+    var pct=Math.min(100,Math.round(total/S.goal*100));
+    $("fill").style.width=pct+"%";$("pct").textContent=pct+"%";$("goal").value=S.goal;
+    var max=Math.max.apply(null,Object.keys(byDay).map(function(k){return byDay[k]}).concat([30]));
+    $("chart").innerHTML=days.map(function(d,n){
+      var m=byDay[dk(d)];
+      return '<div class="'+(n===6?"today":"")+'"><span style="height:'+Math.round(m/max*80)+'px" title="'+m+' min"></span>'+d.toLocaleDateString(undefined,{weekday:"narrow"})+'</div>';
+    }).join("");
+    var seen={};S.log.forEach(function(w){seen[dk(new Date(w.t))]=1});
+    var s=0,c=new Date(now);if(!seen[dk(c)])c.setDate(c.getDate()-1);
+    while(seen[dk(c)]){s++;c.setDate(c.getDate()-1);}
+    $("streak").textContent=s;
+    var prs={},best={};
+    S.log.slice().sort(function(a,b){return a.t-b.t}).forEach(function(w){var k=w.name.toLowerCase();if(k in best&&w.kg>best[k])prs[w.id]=1;if(!(k in best)||w.kg>best[k])best[k]=w.kg;});
+    var seenN={},recent=[];
+    S.log.slice().sort(function(a,b){return b.t-a.t}).forEach(function(w){var k=w.name.toLowerCase();if(!seenN[k]&&recent.length<6){seenN[k]=1;recent.push(w)}});
+    $("chips").innerHTML=recent.map(function(w){return '<button type="button" data-n="'+esc(w.name)+'">'+esc(w.name)+'</button>'}).join("");
+    var items=S.log.slice().sort(function(a,b){return b.t-a.t}).slice(0,30);
+    $("list").innerHTML=items.length?items.map(function(w){
+      var det=[w.mins+" min",w.sr,w.kg?w.kg+" kg":""].filter(Boolean).join(" · ");
+      return '<li><div><p>'+esc(w.name)+(prs[w.id]?'<span class="pr">PR</span>':'')+'</p><p class="meta">'+det+' · '+new Date(w.t).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</p></div><button data-id="'+w.id+'" aria-label="Delete '+esc(w.name)+'">×</button></li>';
+    }).join(""):'<p class="empty">No workouts yet. Log your first one above.</p>';
+  }
+  $("f").addEventListener("submit",function(e){
+    e.preventDefault();
+    S.log.push({id:Date.now(),t:Date.now(),name:$("name").value.trim(),mins:Math.max(1,parseInt($("mins").value,10)||0),sr:$("sr").value.trim(),kg:parseFloat($("kg").value)||0});
+    save();$("f").reset();render();$("name").focus();
+  });
+  $("list").addEventListener("click",function(e){
+    var id=e.target.getAttribute&&e.target.getAttribute("data-id");if(!id)return;
+    var gone=S.log.filter(function(w){return String(w.id)===id})[0];
+    S.log=S.log.filter(function(w){return String(w.id)!==id});save();render();if(gone)toast(gone);
+  });
+  var tt;
+  function toast(w){$("tmsg").textContent="Deleted "+w.name;$("toast").hidden=false;$("undo").onclick=function(){S.log.push(w);save();render();$("toast").hidden=true};clearTimeout(tt);tt=setTimeout(function(){$("toast").hidden=true},5000)}
+  $("chips").addEventListener("click",function(e){
+    var n=e.target.getAttribute&&e.target.getAttribute("data-n");if(!n)return;
+    var last=null;S.log.forEach(function(w){if(w.name.toLowerCase()===n.toLowerCase()&&(!last||w.t>last.t))last=w});
+    $("name").value=n;if(last){$("mins").value=last.mins;$("sr").value=last.sr||"";$("kg").value=last.kg||""}
+    $("mins").focus();
+  });
+  function vibOn(){try{return localStorage.getItem("fit-vib")!=="0"}catch(e){return true}}
+  var rEnd=0,rI=0;
+  function rShow(){var l=Math.max(0,Math.ceil((rEnd-Date.now())/1000));$("rt").textContent=Math.floor(l/60)+":"+("0"+l%60).slice(-2);
+    if(l<=0){clearInterval(rI);rI=0;$("rx").hidden=true;$("rt").textContent="Go!";$("rest").classList.add("done");if(navigator.vibrate&&vibOn()){try{navigator.vibrate([200,100,200])}catch(e){}}}}
+  $("rest").addEventListener("click",function(e){
+    var s=e.target.getAttribute&&e.target.getAttribute("data-s");
+    if(s){rEnd=Date.now()+s*1000;$("rest").classList.remove("done");$("rx").hidden=false;clearInterval(rI);rI=setInterval(rShow,250);rShow()}
+    else if(e.target.id==="rx"){clearInterval(rI);rI=0;$("rt").textContent="0:00";$("rx").hidden=true}
+  });
+  $("exp").addEventListener("click",function(){
+    var rows=[["date","exercise","minutes","sets_reps","weight_kg"]].concat(S.log.slice().sort(function(a,b){return a.t-b.t}).map(function(w){return [new Date(w.t).toISOString().slice(0,10),w.name,w.mins,w.sr||"",w.kg||""]}));
+    var csv=rows.map(function(r){return r.map(function(c){c=String(c);if(/^[=+\-@]/.test(c))c="'"+c;return /[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(",")}).join("\n");
+    var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="consonant-fit.csv";document.body.appendChild(a);a.click();a.remove();
+  });
+  $("goal").addEventListener("change",function(){S.goal=Math.max(10,parseInt(this.value,10)||150);save();render();});
+  setTimeout(function(){document.body.classList.remove("boot")},4000);
+  window.fitGet=function(){return S};
+  window.fitSet=function(n){S=n;try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}render();};
+  render();
+  if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){});});}
+})();
+</script>
+<script src="app.js" defer></script>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,GoogleAuthProvider,signInWithPopup,signInWithRedirect,getRedirectResult} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {initializeFirestore,persistentLocalCache,doc,onSnapshot,setDoc} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+const $=id=>document.getElementById(id),B=document.body;
+try{
+  const {firebaseConfig}=await import("./firebase-config.js");
+  if(!firebaseConfig||String(firebaseConfig.apiKey).indexOf("PASTE")===0)throw new Error("config missing");
+  const app=initializeApp(firebaseConfig),auth=getAuth(app),db=initializeFirestore(app,{localCache:persistentLocalCache()});
+  let ref=null,unsub=null,first=true;
+  const msg=t=>{$("wmsg").textContent=t};
+  const merge=(a,b)=>{const m={};(a||[]).concat(b||[]).forEach(w=>{m[w.id]=w});return Object.values(m)};
+  window.fitPush=S=>{if(ref)setDoc(ref,{log:S.log,goal:S.goal,weights:S.weights||[],profile:S.profile||null,updated:Date.now()}).catch(()=>{})};
+  onAuthStateChanged(auth,u=>{
+    if(unsub){unsub();unsub=null}
+    ref=null;first=true;
+    B.classList.remove("boot");B.classList.toggle("guest",!u);$("so").hidden=!u;
+    window.fitUser=u?{email:u.email||"",name:u.displayName||""}:null;document.dispatchEvent(new Event("fit:auth"));
+    if(!u)return;
+    msg("");
+    ref=doc(db,"users",u.uid);
+    unsub=onSnapshot(ref,snap=>{
+      const local=window.fitGet(),cloud=snap.data();
+      if(first){
+        first=false;
+        const log=merge(local.log,cloud&&cloud.log),goal=(cloud&&cloud.goal)||local.goal,weights=merge(local.weights,cloud&&cloud.weights),profile=(cloud&&cloud.profile)||local.profile||null;
+        window.fitSet({log:log,goal:goal,weights:weights,profile:profile});
+        setDoc(ref,{log:log,goal:goal,weights:weights,profile:profile,updated:Date.now()}).catch(()=>{});
+        return;
       }
-      return res;
-    }).catch(() => caches.match("./index.html")))
-  );
-});
+      if(snap.metadata.hasPendingWrites||!cloud)return;
+      window.fitSet({log:cloud.log||[],goal:cloud.goal||150,weights:cloud.weights||[],profile:cloud.profile||null});
+    });
+  });
+  const errs={"auth/invalid-credential":"Email or password is wrong.","auth/email-already-in-use":"This email already has an account. Tap Sign in.","auth/weak-password":"Use a password with at least 6 characters.","auth/invalid-email":"Enter a valid email address.","auth/network-request-failed":"No connection. Try again online.","auth/unauthorized-domain":"This site\u2019s address is not approved in Firebase yet.","auth/account-exists-with-different-credential":"This email is already registered another way. Use that method to sign in.","auth/too-many-requests":"Too many tries. Wait a minute and try again."};
+  const go=async fn=>{try{await fn(auth,$("em").value.trim(),$("pw").value);$("pw").value=""}catch(x){msg(errs[x.code]||"Could not sign in. Try again.")}};
+  $("af").addEventListener("submit",e=>{e.preventDefault();go(signInWithEmailAndPassword)});
+  $("mk").addEventListener("click",()=>{if($("af").reportValidity())go(createUserWithEmailAndPassword)});
+  $("gg").addEventListener("click",async()=>{
+    const p=new GoogleAuthProvider();
+    try{await signInWithPopup(auth,p)}
+    catch(x){
+      if(x.code==="auth/popup-blocked"||x.code==="auth/operation-not-supported-in-this-environment"){try{await signInWithRedirect(auth,p)}catch(y){msg(errs[y.code]||"Google sign-in failed. Try again.")}}
+      else if(x.code==="auth/popup-closed-by-user"||x.code==="auth/cancelled-popup-request"){msg("Sign-in cancelled.")}
+      else msg(errs[x.code]||"Google sign-in failed. Try again.");
+    }
+  });
+  getRedirectResult(auth).catch(x=>msg(errs[x.code]||"Google sign-in failed. Try again."));
+  $("so").addEventListener("click",()=>signOut(auth).then(()=>window.fitSet({log:[],goal:150,weights:[],profile:null})));
+}catch(e){B.classList.remove("boot");console.warn("Sync is off:",e&&e.message)}
+</script>
+</body>
+</html>
