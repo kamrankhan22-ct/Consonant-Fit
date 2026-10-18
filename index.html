@@ -82,6 +82,18 @@ body.guest #welcome{display:flex}
 @keyframes ipop{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
 @keyframes irise{to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.iring{animation:none;stroke-dashoffset:0}.ipop,.iname,.itag{animation:none;opacity:1;transform:none}}
+.chips{grid-column:1/-1;display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.chips:empty{display:none}
+.chips button,.chip,.rrow button{flex:none;font:600 13px "Archivo",sans-serif;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:6px 12px;cursor:pointer}
+.rrow{display:flex;align-items:center;gap:8px}
+#rt{font-weight:800;font-size:28px;min-width:76px;font-variant-numeric:tabular-nums}
+#rest.done #rt{color:var(--heat)}
+.hh{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.hh h2{margin:0}
+.pr{font-size:11px;font-weight:800;color:#1a0a05;background:var(--heat);border-radius:6px;padding:1px 6px;margin-left:8px;vertical-align:middle}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:50;display:flex;align-items:center;gap:16px;background:var(--ink);color:var(--bg);border-radius:12px;padding:10px 16px;font-size:14px}
+#toast[hidden]{display:none}
+#toast button{background:none;border:0;color:inherit;font:800 14px "Archivo",sans-serif;text-decoration:underline;cursor:pointer;padding:0}
 </style>
 </head>
 <body class="boot">
@@ -112,6 +124,7 @@ body.guest #welcome{display:flex}
   <section>
     <h2>Log a workout</h2>
     <form id="f">
+      <div class="chips" id="chips"></div>
       <label class="w">Exercise<input id="name" required maxlength="40" placeholder="Bench press, run, yoga"></label>
       <label>Minutes<input id="mins" type="number" min="1" max="600" required inputmode="numeric"></label>
       <label>Sets × reps<input id="sr" placeholder="3x10"></label>
@@ -120,8 +133,11 @@ body.guest #welcome{display:flex}
     </form>
   </section>
 
-  <section><h2>History</h2><ul id="list"></ul></section>
+  <section id="rest"><h2>Rest timer</h2><div class="rrow"><span id="rt">0:00</span><button type="button" data-s="60">1:00</button><button type="button" data-s="90">1:30</button><button type="button" data-s="120">2:00</button><button type="button" id="rx" hidden>Stop</button></div></section>
+
+  <section><div class="hh"><h2>History</h2><button class="chip" id="exp" type="button">Export CSV</button></div><ul id="list"></ul></section>
 </main>
+<div id="toast" hidden><span id="tmsg"></span><button id="undo" type="button">Undo</button></div>
 <script>
 (function(){
   var KEY="fit-v1",S={log:[],goal:150};
@@ -147,10 +163,15 @@ body.guest #welcome{display:flex}
     var s=0,c=new Date(now);if(!seen[dk(c)])c.setDate(c.getDate()-1);
     while(seen[dk(c)]){s++;c.setDate(c.getDate()-1);}
     $("streak").textContent=s;
+    var prs={},best={};
+    S.log.slice().sort(function(a,b){return a.t-b.t}).forEach(function(w){var k=w.name.toLowerCase();if(k in best&&w.kg>best[k])prs[w.id]=1;if(!(k in best)||w.kg>best[k])best[k]=w.kg;});
+    var seenN={},recent=[];
+    S.log.slice().sort(function(a,b){return b.t-a.t}).forEach(function(w){var k=w.name.toLowerCase();if(!seenN[k]&&recent.length<6){seenN[k]=1;recent.push(w)}});
+    $("chips").innerHTML=recent.map(function(w){return '<button type="button" data-n="'+esc(w.name)+'">'+esc(w.name)+'</button>'}).join("");
     var items=S.log.slice().sort(function(a,b){return b.t-a.t}).slice(0,30);
     $("list").innerHTML=items.length?items.map(function(w){
       var det=[w.mins+" min",w.sr,w.kg?w.kg+" kg":""].filter(Boolean).join(" · ");
-      return '<li><div><p>'+esc(w.name)+'</p><p class="meta">'+det+' · '+new Date(w.t).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</p></div><button data-id="'+w.id+'" aria-label="Delete '+esc(w.name)+'">×</button></li>';
+      return '<li><div><p>'+esc(w.name)+(prs[w.id]?'<span class="pr">PR</span>':'')+'</p><p class="meta">'+det+' · '+new Date(w.t).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</p></div><button data-id="'+w.id+'" aria-label="Delete '+esc(w.name)+'">×</button></li>';
     }).join(""):'<p class="empty">No workouts yet. Log your first one above.</p>';
   }
   $("f").addEventListener("submit",function(e){
@@ -160,7 +181,29 @@ body.guest #welcome{display:flex}
   });
   $("list").addEventListener("click",function(e){
     var id=e.target.getAttribute&&e.target.getAttribute("data-id");if(!id)return;
-    S.log=S.log.filter(function(w){return String(w.id)!==id});save();render();
+    var gone=S.log.filter(function(w){return String(w.id)===id})[0];
+    S.log=S.log.filter(function(w){return String(w.id)!==id});save();render();if(gone)toast(gone);
+  });
+  var tt;
+  function toast(w){$("tmsg").textContent="Deleted "+w.name;$("toast").hidden=false;$("undo").onclick=function(){S.log.push(w);save();render();$("toast").hidden=true};clearTimeout(tt);tt=setTimeout(function(){$("toast").hidden=true},5000)}
+  $("chips").addEventListener("click",function(e){
+    var n=e.target.getAttribute&&e.target.getAttribute("data-n");if(!n)return;
+    var last=null;S.log.forEach(function(w){if(w.name.toLowerCase()===n.toLowerCase()&&(!last||w.t>last.t))last=w});
+    $("name").value=n;if(last){$("mins").value=last.mins;$("sr").value=last.sr||"";$("kg").value=last.kg||""}
+    $("mins").focus();
+  });
+  var rEnd=0,rI=0;
+  function rShow(){var l=Math.max(0,Math.ceil((rEnd-Date.now())/1000));$("rt").textContent=Math.floor(l/60)+":"+("0"+l%60).slice(-2);
+    if(l<=0){clearInterval(rI);rI=0;$("rx").hidden=true;$("rt").textContent="Go!";$("rest").classList.add("done");if(navigator.vibrate){try{navigator.vibrate([200,100,200])}catch(e){}}}}
+  $("rest").addEventListener("click",function(e){
+    var s=e.target.getAttribute&&e.target.getAttribute("data-s");
+    if(s){rEnd=Date.now()+s*1000;$("rest").classList.remove("done");$("rx").hidden=false;clearInterval(rI);rI=setInterval(rShow,250);rShow()}
+    else if(e.target.id==="rx"){clearInterval(rI);rI=0;$("rt").textContent="0:00";$("rx").hidden=true}
+  });
+  $("exp").addEventListener("click",function(){
+    var rows=[["date","exercise","minutes","sets_reps","weight_kg"]].concat(S.log.slice().sort(function(a,b){return a.t-b.t}).map(function(w){return [new Date(w.t).toISOString().slice(0,10),w.name,w.mins,w.sr||"",w.kg||""]}));
+    var csv=rows.map(function(r){return r.map(function(c){c=String(c);if(/^[=+\-@]/.test(c))c="'"+c;return /[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(",")}).join("\n");
+    var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="consonant-fit.csv";document.body.appendChild(a);a.click();a.remove();
   });
   $("goal").addEventListener("change",function(){S.goal=Math.max(10,parseInt(this.value,10)||150);save();render();});
   setTimeout(function(){document.body.classList.remove("boot")},4000);
