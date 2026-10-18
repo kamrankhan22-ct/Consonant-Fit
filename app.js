@@ -144,6 +144,87 @@
     commit(S);
   });
 
+  // ---- Hamburger menu ----
+  var brand = document.querySelector(".brand"), so = $("so"), exp = $("exp");
+  var ms = document.createElement("style");
+  ms.textContent =
+    ".x-burger{margin-left:auto;display:flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;background:none;border:1px solid var(--line);border-radius:12px;color:var(--ink);cursor:pointer}" +
+    ".brand .x-burger svg{width:22px;height:22px;border-radius:0}" +
+    "#x-nav{position:fixed;inset:0;z-index:60;visibility:hidden;transition:visibility 0s .25s}" +
+    "#x-nav.open{visibility:visible;transition-delay:0s}" +
+    ".x-scrim{position:absolute;inset:0;background:rgba(5,12,16,.55);opacity:0;transition:opacity .25s}" +
+    ".open .x-scrim{opacity:1}" +
+    ".x-panel{position:absolute;top:0;right:0;bottom:0;width:min(320px,86vw);background:var(--surface);border-left:1px solid var(--line);padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:16px;overflow-y:auto;transform:translateX(100%);transition:transform .25s ease}" +
+    ".open .x-panel{transform:none}" +
+    ".x-top{display:flex;justify-content:space-between;align-items:center}.x-top b{font-size:18px;font-weight:800}" +
+    ".x-close{width:44px;height:44px;margin:-8px -8px -8px 0;font-size:28px;line-height:1;background:none;border:0;border-radius:10px;color:var(--ink);cursor:pointer}" +
+    ".x-who{display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:12px}" +
+    ".x-av{flex:none;width:40px;height:40px;border-radius:50%;background:var(--accent);color:var(--surface);font-weight:800;display:flex;align-items:center;justify-content:center;text-transform:uppercase}" +
+    ".x-who div{min-width:0}.x-who b,.x-who span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#x-mail{font-size:13px;color:var(--mute)}" +
+    ".x-links,.x-acts{display:flex;flex-direction:column;gap:2px}" +
+    ".x-acts{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}" +
+    ".x-links button,.x-panel .x-act{width:100%;text-align:left;margin:0;font:600 16px \"Archivo\",sans-serif;color:var(--ink);background:none;border:0;border-radius:10px;padding:12px;cursor:pointer}" +
+    ".x-links button:hover,.x-panel .x-act:hover{background:var(--bg)}" +
+    "@media(prefers-reduced-motion:reduce){#x-nav,.x-scrim,.x-panel{transition:none}}";
+  document.head.appendChild(ms);
+
+  var burger = document.createElement("button");
+  burger.type = "button"; burger.className = "x-burger";
+  burger.setAttribute("aria-label", "Open menu"); burger.setAttribute("aria-expanded", "false"); burger.setAttribute("aria-controls", "x-nav");
+  burger.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+  if (brand) brand.appendChild(burger);
+
+  var nav = document.createElement("div");
+  nav.id = "x-nav";
+  nav.innerHTML = '<div class="x-scrim"></div><aside class="x-panel" role="dialog" aria-modal="true" aria-label="Menu">' +
+    '<div class="x-top"><b>Menu</b><button type="button" class="x-close" aria-label="Close menu">\u00d7</button></div>' +
+    '<div class="x-who"><span class="x-av" id="x-av">?</span><div><b id="x-name"></b><span id="x-mail"></span></div></div>' +
+    '<div class="x-links" id="x-links"></div><div class="x-acts" id="x-acts"><button type="button" class="x-act" id="x-exp">Export CSV</button></div></aside>';
+  document.body.appendChild(nav);
+  if (so) { so.classList.add("x-act"); $("x-acts").appendChild(so); }
+
+  var lastFocus = null;
+  function buildLinks() {
+    var box = $("x-links"); box.innerHTML = "";
+    [["Weekly summary", sum], ["Log a workout", $("f") && $("f").parentNode], ["Progress", prog], ["Body weight", body], ["Rest timer", $("rest")], ["History", $("list").parentNode]].forEach(function (it) {
+      if (!it[1] || it[1].hidden) return;
+      var b = document.createElement("button");
+      b.type = "button"; b.textContent = it[0];
+      b.addEventListener("click", function () {
+        closeNav();
+        var rm = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+        requestAnimationFrame(function () { it[1].scrollIntoView({ behavior: rm ? "auto" : "smooth", block: "start" }); });
+      });
+      box.appendChild(b);
+    });
+  }
+  function openNav() {
+    lastFocus = document.activeElement; buildLinks();
+    nav.classList.add("open"); burger.setAttribute("aria-expanded", "true");
+    document.body.style.overflow = "hidden";
+    setTimeout(function () { nav.querySelector(".x-close").focus(); }, 50);
+  }
+  function closeNav() {
+    nav.classList.remove("open"); burger.setAttribute("aria-expanded", "false");
+    document.body.style.overflow = "";
+    if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true });
+  }
+  burger.addEventListener("click", openNav);
+  nav.querySelector(".x-scrim").addEventListener("click", closeNav);
+  nav.querySelector(".x-close").addEventListener("click", closeNav);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && nav.classList.contains("open")) closeNav(); });
+  $("x-exp").addEventListener("click", function () { closeNav(); if (exp) exp.click(); });
+  if (so) so.addEventListener("click", closeNav);
+
+  function setWho() {
+    var u = window.fitUser, mail = (u && u.email) || "", nm = (u && (u.name || mail.split("@")[0])) || "";
+    $("x-name").textContent = nm || "Local only";
+    $("x-mail").textContent = mail || "Not signed in";
+    $("x-av").textContent = (nm || "?").charAt(0);
+  }
+  document.addEventListener("fit:auth", setWho);
+  setWho();
+
   document.addEventListener("fit:render", update);
   update();
 })();
