@@ -240,6 +240,12 @@
     ".x-seg{display:flex;gap:6px}" +
     ".x-seg button{flex:1;font:600 14px \"Archivo\",sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;cursor:pointer}" +
     ".x-seg button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--surface)}" +
+    ".x-sw{display:flex;gap:14px}.x-sw button{width:40px;height:40px;padding:0;border-radius:50%;border:3px solid var(--surface);box-shadow:0 0 0 1px var(--line);cursor:pointer}" +
+    ".x-sw button[aria-pressed=true]{box-shadow:0 0 0 3px var(--ink)}" +
+    "label.x-row{flex-direction:row;align-items:center;justify-content:space-between;font-size:15px;color:var(--ink)}" +
+    "label.x-row input{width:24px;height:24px;padding:0;flex:none;accent-color:var(--accent)}" +
+    ".x-f .x-pbtns{flex-wrap:wrap;justify-content:flex-start}" +
+    ".x-danger{color:var(--heat);border-color:var(--heat)}" +
     "@media(prefers-reduced-motion:reduce){#x-set{transition:none}}";
   document.head.appendChild(ss);
 
@@ -252,6 +258,9 @@
     '<label class="x-f">Display name<input id="x-pn" maxlength="30" placeholder="Your name" autocomplete="name"></label>' +
     '<label class="x-f">Weekly goal (minutes)<input id="x-gl" type="number" min="10" step="10" inputmode="numeric"></label>' +
     '<div class="x-f"><span>Appearance</span><div class="x-seg" role="group" aria-label="Appearance"><button type="button" data-t="">Auto</button><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button></div></div>' +
+    '<div class="x-f"><span>Accent color</span><div class="x-sw" id="x-sw" role="group" aria-label="Accent color"></div></div>' +
+    '<label class="x-f x-row">Vibrate when rest timer ends<input type="checkbox" id="x-vb"></label>' +
+    '<div class="x-f"><span>Your data</span><p class="meta" id="x-ds" style="margin:0"></p><div class="x-pbtns"><button class="chip" id="x-bk" type="button">Download backup</button><button class="chip" id="x-rs" type="button">Restore backup</button><button class="chip x-danger" id="x-da" type="button">Delete all data</button></div><input id="x-rf" type="file" accept="application/json,.json" hidden></div>' +
     '<p class="meta" id="x-sn" role="status"></p></div>';
   document.body.appendChild(sh);
 
@@ -319,12 +328,75 @@
     applyTheme(b.getAttribute("data-t") || ""); markTheme();
   });
 
+  // accent colors
+  var ACC = { "": ["Teal", "#0f8b8d"], violet: ["Violet", "#6d4aff"], blue: ["Blue", "#2563eb"], rose: ["Rose", "#d6336c"] };
+  Object.keys(ACC).forEach(function (k) {
+    var b = document.createElement("button");
+    b.type = "button"; b.setAttribute("data-a", k); b.setAttribute("aria-label", ACC[k][0]); b.style.background = ACC[k][1];
+    $("x-sw").appendChild(b);
+  });
+  function markAccent() {
+    var k = document.documentElement.getAttribute("data-accent") || "";
+    $("x-sw").querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-a") === k)); });
+  }
+  $("x-sw").addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("button"); if (!b) return;
+    var k = b.getAttribute("data-a") || "", r = document.documentElement;
+    if (k) r.setAttribute("data-accent", k); else r.removeAttribute("data-accent");
+    try { if (k) localStorage.setItem("fit-accent", k); else localStorage.removeItem("fit-accent"); } catch (x) {}
+    markAccent();
+  });
+
+  // vibration
+  function vibOnS() { try { return localStorage.getItem("fit-vib") !== "0"; } catch (e) { return true; } }
+  $("x-vb").addEventListener("change", function () { try { localStorage.setItem("fit-vib", this.checked ? "1" : "0"); } catch (e) {} });
+
+  // data: backup, restore, delete
+  function statsLine() { var S = window.fitGet(); $("x-ds").textContent = (S.log || []).length + " workouts \u00b7 " + (S.weights || []).length + " weigh-ins"; }
+  function mergeById(a, b) { var m = {}; (a || []).concat(b || []).forEach(function (w) { m[w.id] = w; }); return Object.keys(m).map(function (k) { return m[k]; }); }
+  $("x-bk").addEventListener("click", function () {
+    var S = window.fitGet();
+    var txt = JSON.stringify({ app: "consonant-fit", v: 1, exported: new Date().toISOString(), log: S.log || [], weights: S.weights || [], goal: S.goal });
+    var l = document.createElement("a"); l.href = URL.createObjectURL(new Blob([txt], { type: "application/json" }));
+    l.download = "consonant-fit-backup.json"; document.body.appendChild(l); l.click(); l.remove();
+    note("Backup downloaded.");
+  });
+  $("x-rs").addEventListener("click", function () { $("x-rf").click(); });
+  $("x-rf").addEventListener("change", function () {
+    var f = this.files && this.files[0]; this.value = "";
+    if (!f) return;
+    if (f.size > 5e6) { note("That file is too large."); return; }
+    var rd = new FileReader();
+    rd.onload = function () {
+      var d; try { d = JSON.parse(rd.result); } catch (e) { note("That is not a valid backup file."); return; }
+      if (!d || d.app !== "consonant-fit" || !Array.isArray(d.log)) { note("That is not a Consonant-Fit backup."); return; }
+      var num = function (v) { return typeof v === "number" && isFinite(v); };
+      var log = d.log.filter(function (w) { return w && num(w.t) && typeof w.name === "string" && num(w.mins); }).slice(0, 5000).map(function (w) {
+        return { id: w.id != null ? w.id : w.t, t: w.t, name: w.name.slice(0, 40), mins: Math.max(1, Math.round(w.mins)), sr: typeof w.sr === "string" ? w.sr.slice(0, 20) : "", kg: num(w.kg) && w.kg > 0 ? w.kg : 0 };
+      });
+      var wts = (Array.isArray(d.weights) ? d.weights : []).filter(function (w) { return w && num(w.t) && num(w.kg) && w.kg >= 20 && w.kg <= 400; }).slice(0, 5000).map(function (w) {
+        return { id: w.id != null ? w.id : w.t, t: w.t, kg: w.kg };
+      });
+      if (!log.length && !wts.length) { note("Nothing to restore in that file."); return; }
+      if (!confirm("Add " + log.length + " workouts and " + wts.length + " weigh-ins from this backup? Your current data stays.")) return;
+      var S = window.fitGet(); S.log = mergeById(S.log, log); S.weights = mergeById(S.weights, wts);
+      commit(S); statsLine(); note("Restored " + log.length + " workouts and " + wts.length + " weigh-ins.");
+    };
+    rd.onerror = function () { note("Could not read that file."); };
+    rd.readAsText(f);
+  });
+  $("x-da").addEventListener("click", function () {
+    if (!confirm("Delete ALL workouts and weigh-ins? This cannot be undone. Download a backup first if unsure.")) return;
+    var S = window.fitGet(); S.log = []; S.weights = [];
+    commit(S); statsLine(); note("All workout data deleted.");
+  });
+
   var setFocus = null;
   function openSet() {
     setFocus = document.activeElement;
     var S = window.fitGet();
     $("x-pn").value = (S.profile && S.profile.name) || ""; $("x-gl").value = S.goal || 150;
-    note(""); markTheme(); paintAll();
+    note(""); markTheme(); markAccent(); $("x-vb").checked = vibOnS(); statsLine(); paintAll();
     sh.classList.add("open"); document.body.style.overflow = "hidden";
     setTimeout(function () { $("x-sclose").focus(); }, 50);
   }
