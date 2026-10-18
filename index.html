@@ -231,6 +231,7 @@ try{
     if(unsub){unsub();unsub=null}
     ref=null;first=true;
     B.classList.remove("boot");B.classList.toggle("guest",!u);$("so").hidden=!u;
+    window.fitUser=u?{email:u.email||"",name:u.displayName||""}:null;document.dispatchEvent(new Event("fit:auth"));
     if(!u)return;
     msg("");
     ref=doc(db,"users",u.uid);
