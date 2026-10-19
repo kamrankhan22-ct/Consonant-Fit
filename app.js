@@ -1,4 +1,5 @@
-/* Consonant-Fit: extra features (weekly summary, exercise progress, body weight).
+
+  /* Consonant-Fit: extra features (weekly summary, exercise progress, body weight).
    Loaded by index.html. Talks to the main app through window.fitGet / fitSet / fitPush
    and re-draws whenever the main app fires the "fit:render" event. */
 (function () {
@@ -480,6 +481,149 @@
   document.addEventListener("fit:auth", function () { lastPub = ""; renderLB(); schedulePublish(); lbLoad(); });
   renderLB();
 
+  // ---- Activity tracker (GPS distance + step counting) ----
+  var tcs = document.createElement("style");
+  tcs.textContent =
+    ".t-read{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;margin:14px 0}" +
+    ".t-read b{display:block;font-size:22px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}" +
+    ".t-read span{font-size:12px;color:var(--mute)}" +
+    "#t-route svg{width:100%;height:auto;display:block;background:var(--bg);border-radius:12px;margin-bottom:10px}" +
+    ".x-btns .go{flex:1 1 100%}";
+  document.head.appendChild(tcs);
+  var trk = sec("x-trk", "Activity tracker",
+    '<div class="x-seg" id="t-type" role="group" aria-label="Activity type"><button type="button" data-v="Walk" aria-pressed="true">Walk</button><button type="button" data-v="Run" aria-pressed="false">Run</button><button type="button" data-v="Cycle" aria-pressed="false">Cycle</button></div>' +
+    '<div class="t-read"><div><b id="t-km">0.00</b><span>km</span></div><div><b id="t-time">0:00</b><span>time</span></div><div><b id="t-pace">--</b><span id="t-pl">min/km</span></div><div><b id="t-steps">0</b><span id="t-sl">steps</span></div></div>' +
+    '<div id="t-route"></div><p class="meta" id="t-gps" role="status" style="margin:0 0 10px"></p>' +
+    '<div class="x-btns"><button class="go" id="t-start" type="button">Start</button><button class="chip" id="t-pause" type="button" hidden>Pause</button><button class="chip" id="t-res" type="button" hidden>Resume</button><button class="chip" id="t-stop" type="button" hidden>Stop and save</button><button class="chip x-danger" id="t-disc" type="button" hidden>Discard</button></div>' +
+    '<p class="meta" id="t-today" style="margin:12px 0 0"></p>' +
+    '<p class="meta" style="margin:6px 0 0;font-size:12px">Your location stays on this device. Only distance, time and steps are saved. Keep the app open and the screen on while tracking. Add your height in the weight gain plan for better step estimates.</p>');
+  prog.before(trk);
+
+  var tState = "idle", tType = "Walk", tDist = 0, tRoute = [], tLast = null, tAcc = 0, tT0 = 0, tWid = null, tGps = null, tErr = "", mSteps = 0, gotMotion = false, wl = null, sm = 9.8, base = 9.8, prevDev = 0, lastStep = 0;
+
+  function hav(p, q) {
+    var R = 6371000, r = Math.PI / 180, dl = (q.la - p.la) * r, dn = (q.lo - p.lo) * r;
+    var x = Math.sin(dl / 2) * Math.sin(dl / 2) + Math.cos(p.la * r) * Math.cos(q.la * r) * Math.sin(dn / 2) * Math.sin(dn / 2);
+    return 2 * R * Math.asin(Math.sqrt(x));
+  }
+  function stride() {
+    var S = window.fitGet(), h = S.plan && S.plan.gain && S.plan.gain.h;
+    return tType === "Run" ? (h ? h * 0.0065 : 1.1) : (h ? h * 0.00414 : 0.75);
+  }
+  function stepsNow() {
+    if (tType === "Cycle") return { n: 0, est: false };
+    var est = Math.round(tDist / stride());
+    if (gotMotion && mSteps > 0 && (tDist < 200 || (mSteps >= est * 0.5 && mSteps <= est * 1.8))) return { n: mSteps, est: false };
+    return { n: est, est: true };
+  }
+  function elapsed() { return tAcc + (tState === "run" ? Date.now() - tT0 : 0); }
+  function mmss(ms) { var s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); s = s % 60; return (h ? h + ":" + ("0" + m).slice(-2) : m) + ":" + ("0" + s).slice(-2); }
+
+  function drawRoute() {
+    var box = $("t-route");
+    if (tRoute.length < 2) { box.innerHTML = ""; return; }
+    var las = tRoute.map(function (p) { return p.la; }), los = tRoute.map(function (p) { return p.lo; });
+    var minLa = Math.min.apply(null, las), maxLa = Math.max.apply(null, las), minLo = Math.min.apply(null, los), maxLo = Math.max.apply(null, los);
+    var k = Math.cos((minLa + maxLa) / 2 * Math.PI / 180), w = (maxLo - minLo) * k || 1e-6, h = (maxLa - minLa) || 1e-6;
+    var W = 300, H = 150, P = 14, sc = Math.min((W - 2 * P) / w, (H - 2 * P) / h), ox = (W - w * sc) / 2, oy = (H - h * sc) / 2;
+    var pts = tRoute.map(function (p) { return [ox + (p.lo - minLo) * k * sc, H - oy - (p.la - minLa) * sc]; });
+    var d = pts.map(function (c, i) { return (i ? "L" : "M") + c[0].toFixed(1) + " " + c[1].toFixed(1); }).join("");
+    var s0 = pts[0], e = pts[pts.length - 1];
+    box.innerHTML = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Your route"><path d="' + d + '" fill="none" style="stroke:var(--accent)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<circle cx="' + s0[0].toFixed(1) + '" cy="' + s0[1].toFixed(1) + '" r="5" style="fill:var(--ink)"/><circle cx="' + e[0].toFixed(1) + '" cy="' + e[1].toFixed(1) + '" r="6" style="fill:var(--heat)"/></svg>';
+  }
+  function tUi() {
+    var km = tDist / 1000, ms = elapsed(), st = stepsNow(), cyc = tType === "Cycle";
+    $("t-km").textContent = km.toFixed(2); $("t-time").textContent = mmss(ms);
+    if (km >= 0.02 && ms > 0) {
+      if (cyc) $("t-pace").textContent = (km / (ms / 3.6e6)).toFixed(1);
+      else { var pm = ms / 60000 / km; $("t-pace").textContent = Math.floor(pm) + ":" + ("0" + Math.round((pm % 1) * 60 % 60)).slice(-2); }
+    } else $("t-pace").textContent = "--";
+    $("t-pl").textContent = cyc ? "km/h" : "min/km";
+    $("t-steps").textContent = cyc ? "-" : st.n.toLocaleString(); $("t-sl").textContent = st.est && !cyc && st.n ? "steps (est.)" : "steps";
+    var g = tErr || (tState === "idle" ? "" : tGps === null ? "Searching for GPS\u2026" : tGps <= 20 ? "GPS signal good (\u00b1" + Math.round(tGps) + " m)" : "GPS signal weak (\u00b1" + Math.round(tGps) + " m)");
+    if (tState !== "idle" || tErr) $("t-gps").textContent = g;
+    $("t-start").hidden = tState !== "idle"; $("t-pause").hidden = tState !== "run"; $("t-res").hidden = tState !== "pause";
+    $("t-stop").hidden = tState === "idle"; $("t-disc").hidden = tState === "idle";
+    drawRoute();
+  }
+  function onPos(p) {
+    if (tState !== "run") return;
+    var c = p.coords, acc = c.accuracy; tGps = acc; tErr = "";
+    if (acc > 35) { tUi(); return; }
+    var cur = { la: c.latitude, lo: c.longitude, t: p.timestamp || Date.now() };
+    if (!tLast) { tLast = cur; tRoute.push(cur); tUi(); return; }
+    var d = hav(tLast, cur), dt = (cur.t - tLast.t) / 1000;
+    if (d < Math.max(3, acc * 0.6)) return;
+    if (dt > 0 && d / dt > (tType === "Cycle" ? 20 : 11)) { tLast = cur; return; }
+    tDist += d; tLast = cur; tRoute.push(cur); tUi();
+  }
+  function onErr(e) {
+    tErr = e.code === 1 ? "Location permission is blocked. Allow it in your browser or phone settings." : e.code === 2 ? "Position unavailable. Try going outdoors." : "GPS is taking a while. Still trying\u2026";
+    if (e.code === 1) { pauseTrack(); }
+    tUi();
+  }
+  function watchOn() { if (tWid === null) tWid = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 }); }
+  function watchOff() { if (tWid !== null) { navigator.geolocation.clearWatch(tWid); tWid = null; } }
+  function lock() { if (navigator.wakeLock && !wl) navigator.wakeLock.request("screen").then(function (l) { wl = l; l.addEventListener("release", function () { wl = null; }); }).catch(function () {}); }
+  function unlock() { if (wl) { wl.release().catch(function () {}); wl = null; } }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && tState === "run") lock(); });
+
+  function onMotion(e) {
+    var a = e.accelerationIncludingGravity; if (!a || a.x == null || tState !== "run") return;
+    gotMotion = true;
+    var g = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+    sm = sm * 0.6 + g * 0.4; base = base * 0.98 + sm * 0.02;
+    var dev = sm - base, t = Date.now();
+    if (dev > 1.2 && prevDev <= 1.2 && t - lastStep > 280) { mSteps++; lastStep = t; }
+    prevDev = dev;
+  }
+  function motionOn() {
+    var M = window.DeviceMotionEvent; if (!M) return;
+    var bind = function () { window.removeEventListener("devicemotion", onMotion); window.addEventListener("devicemotion", onMotion); };
+    if (typeof M.requestPermission === "function") M.requestPermission().then(function (r) { if (r === "granted") bind(); }).catch(function () {});
+    else bind();
+  }
+  function motionOff() { window.removeEventListener("devicemotion", onMotion); }
+
+  function resetTrack() {
+    watchOff(); unlock(); motionOff();
+    tState = "idle"; tDist = 0; tRoute = []; tLast = null; tAcc = 0; tGps = null; tErr = ""; mSteps = 0; gotMotion = false; sm = base = 9.8; prevDev = 0;
+    tUi();
+  }
+  function pauseTrack() { if (tState !== "run") return; tAcc += Date.now() - tT0; tState = "pause"; watchOff(); unlock(); tUi(); }
+  $("t-type").addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("button"); if (!b || tState !== "idle") return;
+    tType = b.getAttribute("data-v");
+    this.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+    tUi();
+  });
+  $("t-start").addEventListener("click", function () {
+    if (!("geolocation" in navigator)) { tErr = "This browser does not support location."; $("t-gps").textContent = tErr; return; }
+    resetTrack(); motionOn();
+    tState = "run"; tT0 = Date.now(); watchOn(); lock(); tUi();
+  });
+  $("t-pause").addEventListener("click", pauseTrack);
+  $("t-res").addEventListener("click", function () { tErr = ""; tT0 = Date.now(); tState = "run"; tLast = null; watchOn(); lock(); tUi(); });
+  $("t-disc").addEventListener("click", function () { if (confirm("Discard this activity?")) { resetTrack(); $("t-gps").textContent = ""; } });
+  $("t-stop").addEventListener("click", function () {
+    pauseTrack();
+    var ms = tAcc, km = tDist / 1000, st = stepsNow();
+    if (ms < 30000 && km < 0.02) { resetTrack(); $("t-gps").textContent = "Too short to save."; return; }
+    var S = window.fitGet(); S.log = S.log || [];
+    S.log.push({ id: Date.now(), t: Date.now(), name: tType, mins: Math.max(1, Math.round(ms / 60000)), sr: "", kg: 0, km: Math.round(km * 100) / 100, steps: st.n });
+    var msg = "Saved: " + km.toFixed(2) + " km" + (st.n ? " \u00b7 " + st.n.toLocaleString() + " steps" : "") + " \u00b7 " + mmss(ms);
+    resetTrack(); commit(S); $("t-gps").textContent = msg;
+  });
+  function todayLine() {
+    var S = window.fitGet(), tk = dayKey(Date.now()), km = 0, steps = 0;
+    (S.log || []).forEach(function (w) { if (dayKey(w.t) === tk) { km += w.km || 0; steps += w.steps || 0; } });
+    $("t-today").textContent = km || steps ? "Today: " + steps.toLocaleString() + " steps \u00b7 " + (Math.round(km * 100) / 100) + " km tracked" : "No tracked activity today yet.";
+  }
+  setInterval(function () { if (tState === "run") tUi(); }, 1000);
+  document.addEventListener("fit:render", todayLine);
+  todayLine(); tUi();
+
   // ---- Hamburger menu ----
   var brand = document.querySelector(".brand"), so = $("so"), exp = $("exp");
   var ms = document.createElement("style");
@@ -522,7 +666,7 @@
   var lastFocus = null;
   function buildLinks() {
     var box = $("x-links"); box.innerHTML = "";
-    [["Weekly summary", sum], ["Log a workout", $("f") && $("f").parentNode], ["Progress", prog], ["Body weight", body], ["Weight gain plan", gain], ["Workout plan", sched], ["Leaderboard", lbSec], ["Rest timer", $("rest")], ["History", $("list").parentNode]].forEach(function (it) {
+    [["Weekly summary", sum], ["Log a workout", $("f") && $("f").parentNode], ["Activity tracker", trk], ["Progress", prog], ["Body weight", body], ["Weight gain plan", gain], ["Workout plan", sched], ["Leaderboard", lbSec], ["Rest timer", $("rest")], ["History", $("list").parentNode]].forEach(function (it) {
       if (!it[1] || it[1].hidden) return;
       var b = document.createElement("button");
       b.type = "button"; b.textContent = it[0];
@@ -711,7 +855,7 @@
       if (!d || d.app !== "consonant-fit" || !Array.isArray(d.log)) { note("That is not a Consonant-Fit backup."); return; }
       var num = function (v) { return typeof v === "number" && isFinite(v); };
       var log = d.log.filter(function (w) { return w && num(w.t) && typeof w.name === "string" && num(w.mins); }).slice(0, 5000).map(function (w) {
-        return { id: w.id != null ? w.id : w.t, t: w.t, name: w.name.slice(0, 40), mins: Math.max(1, Math.round(w.mins)), sr: typeof w.sr === "string" ? w.sr.slice(0, 20) : "", kg: num(w.kg) && w.kg > 0 ? w.kg : 0 };
+        return { id: w.id != null ? w.id : w.t, t: w.t, name: w.name.slice(0, 40), mins: Math.max(1, Math.round(w.mins)), sr: typeof w.sr === "string" ? w.sr.slice(0, 20) : "", kg: num(w.kg) && w.kg > 0 ? w.kg : 0, km: num(w.km) && w.km > 0 && w.km < 1000 ? w.km : 0, steps: num(w.steps) && w.steps > 0 && w.steps < 200000 ? Math.round(w.steps) : 0 };
       });
       var wts = (Array.isArray(d.weights) ? d.weights : []).filter(function (w) { return w && num(w.t) && num(w.kg) && w.kg >= 20 && w.kg <= 400; }).slice(0, 5000).map(function (w) {
         return { id: w.id != null ? w.id : w.t, t: w.t, kg: w.kg };
@@ -782,27 +926,27 @@
     '<svg viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="hg-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--accent)"/><stop offset="1" style="stop-color:var(--heat)"/></linearGradient></defs>' +
     '<circle class="tr" cx="60" cy="60" r="50" fill="none" stroke-width="11"/><circle class="pg" id="hg-ring" cx="60" cy="60" r="50" fill="none" stroke="url(#hg-grad)" stroke-width="11" stroke-linecap="round" stroke-dasharray="314.16" stroke-dashoffset="314.16"/></svg>' +
     '<div class="ringc"><b id="hg-m">0</b><span id="hg-of"></span></div></div>' +
-    '<div class="hstats"><div class="hs"><b id="hg-s">0</b><span>day streak</span></div><div class="hs"><b id="hg-c">0</b><span>workouts this week</span></div><div class="hs"><b id="hg-p">0%</b><span>of weekly goal</span></div></div></div>';
+    '<div class="hstats"><div class="hs"><b id="hg-s">0</b><span>day streak</span></div><div class="hs"><b id="hg-c">0</b><span>workouts this week</span></div><div class="hs"><b id="hg-p">0%</b><span>of weekly goal</span></div><div class="hs"><b id="hg-st">0</b><span>steps today</span></div></div></div>';
   if (brand) brand.after(hero);
   ["main > h1", "main > .big", "main > .bar", "main > .row", "main > .goal"].forEach(function (q) { var e = document.querySelector(q); if (e) e.style.display = "none"; });
   function updateHero() {
     var S = window.fitGet(), u = window.fitUser, d0 = new Date(); d0.setHours(0, 0, 0, 0);
-    var s1 = d0.getTime() - 6 * D, min = 0, cnt = 0, today = false, tk = dayKey(Date.now());
-    (S.log || []).forEach(function (w) { if (w.t >= s1) { min += w.mins; cnt++; } if (dayKey(w.t) === tk) today = true; });
+    var s1 = d0.getTime() - 6 * D, min = 0, cnt = 0, today = false, stepsT = 0, tk = dayKey(Date.now());
+    (S.log || []).forEach(function (w) { if (w.t >= s1) { min += w.mins; cnt++; } if (dayKey(w.t) === tk) { today = true; stepsT += w.steps || 0; } });
     var goal = S.goal || 150, pct = Math.min(100, Math.round(min / goal * 100)), st = myStats(S).streak, hr = new Date().getHours();
     var nm = ((S.profile && S.profile.name) || (u && u.name) || "").trim().split(/\s+/)[0];
     $("hg-g").textContent = (hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening") + (nm ? ", " + nm : "");
     $("hg-q").textContent = today ? "You trained today. Great work, now recover well." : st > 0 ? "Keep your " + st + "-day streak going." : QUOTES[Math.floor(Date.now() / 864e5) % QUOTES.length];
     $("hg-m").textContent = min; $("hg-of").textContent = "of " + goal + " min";
     $("hg-ring").style.strokeDashoffset = String(314.16 * (1 - pct / 100));
-    $("hg-s").textContent = st; $("hg-c").textContent = cnt; $("hg-p").textContent = pct + "%";
+    $("hg-s").textContent = st; $("hg-c").textContent = cnt; $("hg-p").textContent = pct + "%"; $("hg-st").textContent = stepsT.toLocaleString();
   }
   document.addEventListener("fit:render", updateHero);
   document.addEventListener("fit:auth", updateHero);
   updateHero();
 
   // ---- Section icons ----
-  var ICONS = { "Last 7 days": "M3 3v18h18M7 14v4M12 9v9M17 5v13", "Log a workout": "M12 5v14M5 12h14", "Weekly summary": "M3 17l6-6 4 4 8-8M15 7h6v6", "Progress": "M3 3v18h18M7 15l4-4 3 3 5-6", "Body weight": "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM8 10a4 4 0 0 1 8 0M12 10l2-2", "Weight gain plan": "M5 21V4M5 4h12l-2 4 2 4H5", "Workout plan": "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4", "Leaderboard": "M8 4h8v5a4 4 0 0 1-8 0zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8", "Rest timer": "M12 7v5l3 2M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z", "History": "M4 6h16M4 12h16M4 18h10" };
+  var ICONS = { "Last 7 days": "M3 3v18h18M7 14v4M12 9v9M17 5v13", "Log a workout": "M12 5v14M5 12h14", "Weekly summary": "M3 17l6-6 4 4 8-8M15 7h6v6", "Progress": "M3 3v18h18M7 15l4-4 3 3 5-6", "Activity tracker": "M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11zM12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z", "Body weight": "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM8 10a4 4 0 0 1 8 0M12 10l2-2", "Weight gain plan": "M5 21V4M5 4h12l-2 4 2 4H5", "Workout plan": "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4", "Leaderboard": "M8 4h8v5a4 4 0 0 1-8 0zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8", "Rest timer": "M12 7v5l3 2M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z", "History": "M4 6h16M4 12h16M4 18h10" };
   document.querySelectorAll("main h2").forEach(function (h) {
     var d = ICONS[h.textContent.trim()];
     if (d && !h.querySelector("svg")) h.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"/></svg>');
