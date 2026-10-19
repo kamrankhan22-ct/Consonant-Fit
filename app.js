@@ -576,7 +576,7 @@
     ".x-seg{display:flex;gap:6px}" +
     ".x-seg button{flex:1;font:600 14px \"Archivo\",sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;cursor:pointer}" +
     ".x-seg button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--surface)}" +
-    ".x-sw{display:flex;gap:14px}.x-sw button{width:40px;height:40px;padding:0;border-radius:50%;border:3px solid var(--surface);box-shadow:0 0 0 1px var(--line);cursor:pointer}" +
+    ".x-sw{display:flex;flex-wrap:wrap;gap:12px}.x-sw button{width:40px;height:40px;padding:0;border-radius:50%;border:3px solid var(--surface);box-shadow:0 0 0 1px var(--line);cursor:pointer}" +
     ".x-sw button[aria-pressed=true]{box-shadow:0 0 0 3px var(--ink)}" +
     "label.x-row{flex-direction:row;align-items:center;justify-content:space-between;font-size:15px;color:var(--ink)}" +
     "label.x-row input{width:24px;height:24px;padding:0;flex:none;accent-color:var(--accent)}" +
@@ -595,6 +595,8 @@
     '<label class="x-f">Weekly goal (minutes)<input id="x-gl" type="number" min="10" step="10" inputmode="numeric"></label>' +
     '<div class="x-f"><span>Appearance</span><div class="x-seg" role="group" aria-label="Appearance"><button type="button" data-t="">Auto</button><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button></div></div>' +
     '<div class="x-f"><span>Accent color</span><div class="x-sw" id="x-sw" role="group" aria-label="Accent color"></div></div>' +
+    '<div class="x-f"><span>Card style</span><div class="x-seg" id="x-card" role="group" aria-label="Card style"><button type="button" data-v="">Soft</button><button type="button" data-v="outline">Outline</button></div></div>' +
+    '<div class="x-f"><span>Layout density</span><div class="x-seg" id="x-den" role="group" aria-label="Layout density"><button type="button" data-v="">Comfortable</button><button type="button" data-v="compact">Compact</button></div></div>' +
     '<label class="x-f x-row">Vibrate when rest timer ends<input type="checkbox" id="x-vb"></label>' +
     '<label class="x-f x-row">Show me on the leaderboard<input type="checkbox" id="x-lb"></label>' +
     '<div class="x-f"><span>Your data</span><p class="meta" id="x-ds" style="margin:0"></p><div class="x-pbtns"><button class="chip" id="x-bk" type="button">Download backup</button><button class="chip" id="x-rs" type="button">Restore backup</button><button class="chip x-danger" id="x-da" type="button">Delete all data</button></div><input id="x-rf" type="file" accept="application/json,.json" hidden></div>' +
@@ -658,15 +660,15 @@
   }
   function markTheme() {
     var t = document.documentElement.getAttribute("data-theme") || "";
-    sh.querySelectorAll(".x-seg button").forEach(function (b) { b.setAttribute("aria-pressed", String((b.getAttribute("data-t") || "") === t)); });
+    sh.querySelectorAll('.x-seg[aria-label="Appearance"] button').forEach(function (b) { b.setAttribute("aria-pressed", String((b.getAttribute("data-t") || "") === t)); });
   }
-  sh.querySelector(".x-seg").addEventListener("click", function (e) {
+  sh.querySelector('.x-seg[aria-label="Appearance"]').addEventListener("click", function (e) {
     var b = e.target.closest && e.target.closest("button"); if (!b) return;
     applyTheme(b.getAttribute("data-t") || ""); markTheme();
   });
 
   // accent colors
-  var ACC = { "": ["Teal", "#0f8b8d"], violet: ["Violet", "#6d4aff"], blue: ["Blue", "#2563eb"], rose: ["Rose", "#d6336c"] };
+  var ACC = { "": ["Teal", "#0f8b8d"], violet: ["Violet", "#6d4aff"], blue: ["Blue", "#2563eb"], rose: ["Rose", "#d6336c"], green: ["Green", "#15803d"], orange: ["Orange", "#c2410c"], sky: ["Sky", "#0369a1"] };
   Object.keys(ACC).forEach(function (k) {
     var b = document.createElement("button");
     b.type = "button"; b.setAttribute("data-a", k); b.setAttribute("aria-label", ACC[k][0]); b.style.background = ACC[k][1];
@@ -729,13 +731,29 @@
   });
 
   $("x-lb").addEventListener("change", function () { setLB(this.checked); });
+  function bindSeg(id, attr, key) {
+    var box = $(id);
+    function mark() {
+      var v = document.documentElement.getAttribute(attr) || "";
+      box.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", String((b.getAttribute("data-v") || "") === v)); });
+    }
+    box.addEventListener("click", function (e) {
+      var b = e.target.closest && e.target.closest("button"); if (!b) return;
+      var v = b.getAttribute("data-v") || "", r = document.documentElement;
+      if (v) r.setAttribute(attr, v); else r.removeAttribute(attr);
+      try { if (v) localStorage.setItem(key, v); else localStorage.removeItem(key); } catch (x) {}
+      mark();
+    });
+    return mark;
+  }
+  var markCard = bindSeg("x-card", "data-card", "fit-card"), markDen = bindSeg("x-den", "data-density", "fit-density");
 
   var setFocus = null;
   function openSet() {
     setFocus = document.activeElement;
     var S = window.fitGet();
     $("x-pn").value = (S.profile && S.profile.name) || ""; $("x-gl").value = S.goal || 150;
-    note(""); markTheme(); markAccent(); $("x-vb").checked = vibOnS(); $("x-lb").checked = !!(S.profile && S.profile.lb); statsLine(); paintAll();
+    note(""); markTheme(); markAccent(); markCard(); markDen(); $("x-vb").checked = vibOnS(); $("x-lb").checked = !!(S.profile && S.profile.lb); statsLine(); paintAll();
     sh.classList.add("open"); document.body.style.overflow = "hidden";
     setTimeout(function () { $("x-sclose").focus(); }, 50);
   }
@@ -755,6 +773,40 @@
   document.addEventListener("fit:render", paintAll);
   document.addEventListener("fit:auth", paintAll);
   paintAll();
+
+  // ---- Hero card (greeting + progress ring) ----
+  var QUOTES = ["Small sessions still count.", "Show up today, thank yourself later.", "One more set. Then another.", "Progress is quiet. Keep logging.", "Strong is built on ordinary days.", "Rest is part of the plan.", "Beat yesterday's you.", "Consistency beats intensity.", "Start light, finish proud.", "Your future self is watching.", "Do it for the next version of you.", "Every rep is a vote for who you become."];
+  var hero = document.createElement("section");
+  hero.id = "x-hero";
+  hero.innerHTML = '<p class="hg" id="hg-g"></p><p class="hq" id="hg-q"></p><div class="hr"><div class="ringw">' +
+    '<svg viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="hg-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--accent)"/><stop offset="1" style="stop-color:var(--heat)"/></linearGradient></defs>' +
+    '<circle class="tr" cx="60" cy="60" r="50" fill="none" stroke-width="11"/><circle class="pg" id="hg-ring" cx="60" cy="60" r="50" fill="none" stroke="url(#hg-grad)" stroke-width="11" stroke-linecap="round" stroke-dasharray="314.16" stroke-dashoffset="314.16"/></svg>' +
+    '<div class="ringc"><b id="hg-m">0</b><span id="hg-of"></span></div></div>' +
+    '<div class="hstats"><div class="hs"><b id="hg-s">0</b><span>day streak</span></div><div class="hs"><b id="hg-c">0</b><span>workouts this week</span></div><div class="hs"><b id="hg-p">0%</b><span>of weekly goal</span></div></div></div>';
+  if (brand) brand.after(hero);
+  ["main > h1", "main > .big", "main > .bar", "main > .row", "main > .goal"].forEach(function (q) { var e = document.querySelector(q); if (e) e.style.display = "none"; });
+  function updateHero() {
+    var S = window.fitGet(), u = window.fitUser, d0 = new Date(); d0.setHours(0, 0, 0, 0);
+    var s1 = d0.getTime() - 6 * D, min = 0, cnt = 0, today = false, tk = dayKey(Date.now());
+    (S.log || []).forEach(function (w) { if (w.t >= s1) { min += w.mins; cnt++; } if (dayKey(w.t) === tk) today = true; });
+    var goal = S.goal || 150, pct = Math.min(100, Math.round(min / goal * 100)), st = myStats(S).streak, hr = new Date().getHours();
+    var nm = ((S.profile && S.profile.name) || (u && u.name) || "").trim().split(/\s+/)[0];
+    $("hg-g").textContent = (hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening") + (nm ? ", " + nm : "");
+    $("hg-q").textContent = today ? "You trained today. Great work, now recover well." : st > 0 ? "Keep your " + st + "-day streak going." : QUOTES[Math.floor(Date.now() / 864e5) % QUOTES.length];
+    $("hg-m").textContent = min; $("hg-of").textContent = "of " + goal + " min";
+    $("hg-ring").style.strokeDashoffset = String(314.16 * (1 - pct / 100));
+    $("hg-s").textContent = st; $("hg-c").textContent = cnt; $("hg-p").textContent = pct + "%";
+  }
+  document.addEventListener("fit:render", updateHero);
+  document.addEventListener("fit:auth", updateHero);
+  updateHero();
+
+  // ---- Section icons ----
+  var ICONS = { "Last 7 days": "M3 3v18h18M7 14v4M12 9v9M17 5v13", "Log a workout": "M12 5v14M5 12h14", "Weekly summary": "M3 17l6-6 4 4 8-8M15 7h6v6", "Progress": "M3 3v18h18M7 15l4-4 3 3 5-6", "Body weight": "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM8 10a4 4 0 0 1 8 0M12 10l2-2", "Weight gain plan": "M5 21V4M5 4h12l-2 4 2 4H5", "Workout plan": "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4", "Leaderboard": "M8 4h8v5a4 4 0 0 1-8 0zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8", "Rest timer": "M12 7v5l3 2M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z", "History": "M4 6h16M4 12h16M4 18h10" };
+  document.querySelectorAll("main h2").forEach(function (h) {
+    var d = ICONS[h.textContent.trim()];
+    if (d && !h.querySelector("svg")) h.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"/></svg>');
+  });
 
   document.addEventListener("fit:render", update);
   update();
