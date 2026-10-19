@@ -226,7 +226,7 @@ body.guest #welcome{display:flex}
     $("chips").innerHTML=recent.map(function(w){return '<button type="button" data-n="'+esc(w.name)+'">'+esc(w.name)+'</button>'}).join("");
     var items=S.log.slice().sort(function(a,b){return b.t-a.t}).slice(0,30);
     $("list").innerHTML=items.length?items.map(function(w){
-      var det=[w.mins+" min",w.sr,w.kg?w.kg+" kg":""].filter(Boolean).join(" · ");
+      var det=[w.mins+" min",w.km?w.km+" km":"",w.steps?w.steps.toLocaleString()+" steps":"",w.sr,w.kg?w.kg+" kg":""].filter(Boolean).join(" · ");
       return '<li><div><p>'+esc(w.name)+(prs[w.id]?'<span class="pr">PR</span>':'')+'</p><p class="meta">'+det+' · '+new Date(w.t).toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</p></div><button data-id="'+w.id+'" aria-label="Delete '+esc(w.name)+'">×</button></li>';
     }).join(""):'<p class="empty">No workouts yet. Log your first one above.</p>';
   }
@@ -258,7 +258,7 @@ body.guest #welcome{display:flex}
     else if(e.target.id==="rx"){clearInterval(rI);rI=0;$("rt").textContent="0:00";$("rx").hidden=true}
   });
   $("exp").addEventListener("click",function(){
-    var rows=[["date","exercise","minutes","sets_reps","weight_kg"]].concat(S.log.slice().sort(function(a,b){return a.t-b.t}).map(function(w){return [new Date(w.t).toISOString().slice(0,10),w.name,w.mins,w.sr||"",w.kg||""]}));
+    var rows=[["date","exercise","minutes","sets_reps","weight_kg","km","steps"]].concat(S.log.slice().sort(function(a,b){return a.t-b.t}).map(function(w){return [new Date(w.t).toISOString().slice(0,10),w.name,w.mins,w.sr||"",w.kg||"",w.km||"",w.steps||""]}));
     var csv=rows.map(function(r){return r.map(function(c){c=String(c);if(/^[=+\-@]/.test(c))c="'"+c;return /[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(",")}).join("\n");
     var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="consonant-fit.csv";document.body.appendChild(a);a.click();a.remove();
   });
