@@ -1,5 +1,4 @@
-
-  /* Consonant-Fit: extra features (weekly summary, exercise progress, body weight).
+/* Consonant-Fit: extra features (weekly summary, exercise progress, body weight).
    Loaded by index.html. Talks to the main app through window.fitGet / fitSet / fitPush
    and re-draws whenever the main app fires the "fit:render" event. */
 (function () {
@@ -624,6 +623,48 @@
   document.addEventListener("fit:render", todayLine);
   todayLine(); tUi();
 
+  // ---- Coming soon (Monk Mode challenge + roadmap) ----
+  var scs = document.createElement("style");
+  scs.textContent =
+    ".x-mm{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 18%,var(--surface)),var(--surface));border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));border-radius:16px;padding:16px}" +
+    ".x-soon-h{display:flex;align-items:center;justify-content:space-between;gap:10px}.x-soon-h b{font-size:18px;font-weight:800;letter-spacing:-.02em}" +
+    ".x-tag{flex:none;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--surface);background:var(--heat);border-radius:999px;padding:3px 10px}" +
+    ".x-fi{display:flex;gap:10px;align-items:flex-start;padding:5px 0;font-size:14px}" +
+    ".x-ck{flex:none;width:16px;height:16px;border-radius:50%;border:2px solid var(--accent);margin-top:2px}" +
+    ".x-more-h{margin:18px 0 4px;font-size:13px;font-weight:800;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}" +
+    ".x-mr{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;font-size:14px;border-top:1px solid var(--line)}" +
+    ".x-mr:first-of-type{border-top:0}" +
+    ".chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--surface)}";
+  document.head.appendChild(scs);
+  var MONK = ["Pick a length: 7, 14 or 30 days", "Daily checklist: workout, steps goal, water, early sleep, no junk food, no doomscrolling", "Add your own custom rules", "Strict mode: miss a day and the streak resets", "Morning plan and evening check-in reminders", "Distraction-free focus timer for deep work", "Calendar heatmap of your clean days", "Milestone badges at day 7, 14 and 30", "Weekly reflection notes", "Invite friends and rank on a challenge board"];
+  var MORE = [["push", "Reminders when the app is fully closed"], ["meals", "Meal and calorie log"], ["friends", "Friends and group challenges"], ["templates", "Workout templates and routines"]];
+  var soon = sec("x-soon", "Coming soon",
+    '<div class="x-mm"><div class="x-soon-h"><b>Monk Mode challenge</b><span class="x-tag">Coming soon</span></div>' +
+    '<p class="meta" style="margin:6px 0 10px">A focused challenge to build discipline: train daily, cut distractions and sleep on time.</p>' +
+    MONK.map(function (t) { return '<div class="x-fi"><span class="x-ck"></span><span>' + t + "</span></div>"; }).join("") +
+    '<button class="chip" id="x-mmb" data-k="monk" type="button" style="margin-top:12px"></button></div>' +
+    '<p class="x-more-h">Also on the way</p>' +
+    MORE.map(function (m) { return '<div class="x-mr"><span>' + m[1] + '</span><button class="chip" data-k="' + m[0] + '" type="button"></button></div>'; }).join("") +
+    '<p class="meta" style="margin:12px 0 0;font-size:12px">Tap to show you want a feature. It helps decide what gets built first.</p>');
+  $("list").parentNode.after(soon);
+  function renderSoon() {
+    var S = window.fitGet(), want = (S.profile && S.profile.soon) || {};
+    soon.querySelectorAll("button[data-k]").forEach(function (b) {
+      var on = !!want[b.getAttribute("data-k")], isMonk = b.getAttribute("data-k") === "monk";
+      b.setAttribute("aria-pressed", String(on));
+      b.textContent = on ? "You\u2019re on the list \u2713" : isMonk ? "Count me in" : "I want this";
+    });
+  }
+  soon.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("button[data-k]"); if (!b) return;
+    var k = b.getAttribute("data-k"), S = window.fitGet();
+    S.profile = S.profile || {}; S.profile.soon = S.profile.soon || {};
+    S.profile.soon[k] = !S.profile.soon[k];
+    commit(S);
+  });
+  document.addEventListener("fit:render", renderSoon);
+  renderSoon();
+
   // ---- Hamburger menu ----
   var brand = document.querySelector(".brand"), so = $("so"), exp = $("exp");
   var ms = document.createElement("style");
@@ -666,7 +707,7 @@
   var lastFocus = null;
   function buildLinks() {
     var box = $("x-links"); box.innerHTML = "";
-    [["Weekly summary", sum], ["Log a workout", $("f") && $("f").parentNode], ["Activity tracker", trk], ["Progress", prog], ["Body weight", body], ["Weight gain plan", gain], ["Workout plan", sched], ["Leaderboard", lbSec], ["Rest timer", $("rest")], ["History", $("list").parentNode]].forEach(function (it) {
+    [["Weekly summary", sum], ["Log a workout", $("f") && $("f").parentNode], ["Activity tracker", trk], ["Progress", prog], ["Body weight", body], ["Weight gain plan", gain], ["Workout plan", sched], ["Leaderboard", lbSec], ["Rest timer", $("rest")], ["History", $("list").parentNode], ["Coming soon", soon]].forEach(function (it) {
       if (!it[1] || it[1].hidden) return;
       var b = document.createElement("button");
       b.type = "button"; b.textContent = it[0];
@@ -946,7 +987,7 @@
   updateHero();
 
   // ---- Section icons ----
-  var ICONS = { "Last 7 days": "M3 3v18h18M7 14v4M12 9v9M17 5v13", "Log a workout": "M12 5v14M5 12h14", "Weekly summary": "M3 17l6-6 4 4 8-8M15 7h6v6", "Progress": "M3 3v18h18M7 15l4-4 3 3 5-6", "Activity tracker": "M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11zM12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z", "Body weight": "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM8 10a4 4 0 0 1 8 0M12 10l2-2", "Weight gain plan": "M5 21V4M5 4h12l-2 4 2 4H5", "Workout plan": "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4", "Leaderboard": "M8 4h8v5a4 4 0 0 1-8 0zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8", "Rest timer": "M12 7v5l3 2M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z", "History": "M4 6h16M4 12h16M4 18h10" };
+  var ICONS = { "Last 7 days": "M3 3v18h18M7 14v4M12 9v9M17 5v13", "Log a workout": "M12 5v14M5 12h14", "Weekly summary": "M3 17l6-6 4 4 8-8M15 7h6v6", "Progress": "M3 3v18h18M7 15l4-4 3 3 5-6", "Activity tracker": "M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11zM12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z", "Body weight": "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM8 10a4 4 0 0 1 8 0M12 10l2-2", "Weight gain plan": "M5 21V4M5 4h12l-2 4 2 4H5", "Workout plan": "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4", "Leaderboard": "M8 4h8v5a4 4 0 0 1-8 0zM8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3M12 13v4M8 20h8", "Rest timer": "M12 7v5l3 2M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z", "History": "M4 6h16M4 12h16M4 18h10", "Coming soon": "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z" };
   document.querySelectorAll("main h2").forEach(function (h) {
     var d = ICONS[h.textContent.trim()];
     if (d && !h.querySelector("svg")) h.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + d + '"/></svg>');
