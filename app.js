@@ -153,7 +153,9 @@
     ".x-days button{flex:1;min-width:0;font:600 13px \"Archivo\",sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 0;cursor:pointer}" +
     ".x-days button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--surface)}" +
     ".x-wk{margin-top:12px}.x-wk span.meta{display:block;font-size:12px}.x-wk li.today b{color:var(--accent)}" +
-    ".x-big2{font-size:22px;font-weight:800;letter-spacing:-.02em;margin:0}.x-big2 .meta{font-size:15px;font-weight:600}";
+    ".x-big2{font-size:22px;font-weight:800;letter-spacing:-.02em;margin:0}.x-big2 .meta{font-size:15px;font-weight:600}" +
+    ".x-sub{margin:18px 0 0;font-size:14px;font-weight:800}" +
+    ".x-msw{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.x-ms{font-size:12px;font-weight:700;border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--mute)}.x-ms.on{background:var(--accent);border-color:var(--accent);color:var(--surface)}";
   document.head.appendChild(ps);
 
   var gain = sec("x-gain", "Weight gain plan",
@@ -166,6 +168,7 @@
     '<label>Age<input id="g-age" type="number" min="14" max="90" inputmode="numeric"></label>' +
     '<label>Sex<select id="g-sex"><option value="">Skip</option><option value="m">Male</option><option value="f">Female</option></select></label>' +
     '<label>Activity<select id="g-act"><option value="l">Light (1\u20132 workouts/week)</option><option value="m">Moderate (3\u20135 per week)</option><option value="a">High (6+ per week)</option></select></label>' +
+    '<label>Food preference<select id="g-diet"><option value="veg">Vegetarian</option><option value="egg">Vegetarian + eggs</option><option value="non">Non-vegetarian</option></select></label>' +
     '<p class="meta" id="g-msg" role="status" style="margin:0"></p>' +
     '<div class="x-btns"><button class="chip" id="g-save" type="button">Save plan</button><button class="chip" id="g-cancel" type="button">Cancel</button><button class="chip x-danger" id="g-del" type="button">Remove plan</button></div></div>');
   var sched = sec("x-sched", "Workout plan",
@@ -206,9 +209,78 @@
     return ws.length ? ws[ws.length - 1].kg : null;
   }
 
+  function lk(d) { d = d || new Date(); return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); }
+  function gainTargets(g, cur) {
+    if (!g.h || !g.age || !g.sex || g.age < 18) return null;
+    var bmr = 10 * cur + 6.25 * g.h - 5 * g.age + (g.sex === "m" ? 5 : -161);
+    var tdee = Math.round(bmr * ({ l: 1.375, m: 1.55, a: 1.725 }[g.act] || 1.55) / 10) * 10;
+    var sur = Math.round(g.rate * 1100 / 5) * 5, kc = Math.round((tdee + sur) / 10) * 10;
+    var pT = Math.round(1.8 * cur), fat = Math.round(kc * 0.25 / 9), carb = Math.max(0, Math.round((kc - pT * 4 - fat * 9) / 4));
+    return { tdee: tdee, sur: sur, kc: kc, pT: pT, pLo: Math.round(1.6 * cur), pHi: Math.round(2.2 * cur), fat: fat, carb: carb };
+  }
+  function trajChart(S, g) {
+    var ws = (S.weights || []).filter(function (w) { return w.t >= g.startT - 864e5; }).sort(function (x, y) { return x.t - y.t; });
+    var now = Date.now(), wk = (g.target - g.startKg) / g.rate, endT = g.startT + wk * 6048e5, t1 = Math.max(now, endT);
+    var vals = ws.map(function (w) { return w.kg; }).concat([g.startKg, g.target]);
+    var mn = Math.min.apply(null, vals) - 0.5, mx = Math.max.apply(null, vals) + 0.5, W = 300, H = 110, P = 10;
+    var X = function (t) { return P + (Math.max(t, g.startT) - g.startT) / (t1 - g.startT) * (W - 2 * P); };
+    var Y = function (v) { return H - P - (v - mn) / (mx - mn) * (H - 2 * P); };
+    var plan = "M" + X(g.startT).toFixed(1) + " " + Y(g.startKg).toFixed(1) + "L" + X(endT).toFixed(1) + " " + Y(g.target).toFixed(1);
+    var act = ws.map(function (w, i) { return (i ? "L" : "M") + X(w.t).toFixed(1) + " " + Y(w.kg).toFixed(1); }).join("");
+    var last = ws.length ? ws[ws.length - 1] : null;
+    return '<svg viewBox="0 0 300 110" role="img" aria-label="Planned versus actual weight" style="width:100%;height:auto;display:block;margin-top:12px"><path d="' + plan + '" fill="none" style="stroke:var(--mute)" stroke-width="2" stroke-dasharray="5 5"/>' +
+      (act ? '<path d="' + act + '" fill="none" style="stroke:var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' : "") +
+      (last ? '<circle cx="' + X(last.t).toFixed(1) + '" cy="' + Y(last.kg).toFixed(1) + '" r="5" style="fill:var(--heat)"/>' : "") +
+      '</svg><p class="meta" style="margin:4px 0 0;font-size:12px">Dashed line: planned pace. Solid line: your weigh-ins.</p>';
+  }
+  function milestones(g, cur) {
+    var gained = cur - g.startKg, total = Math.floor(g.target - g.startKg), h = "";
+    if (total < 1) return "";
+    for (var i = 1; i <= Math.min(total, 10); i++) h += '<span class="x-ms' + (gained >= i ? " on" : "") + '">' + (gained >= i ? "\u2713 " : "") + "+" + i + " kg</span>";
+    return '<div class="x-msw">' + h + "</div>";
+  }
+  function paceTip(S, g) {
+    var now = Date.now(), ws = (S.weights || []).filter(function (w) { return w.t >= now - 21 * 864e5 && w.t >= g.startT - 864e5; }).sort(function (x, y) { return x.t - y.t; });
+    if (ws.length < 2) return "";
+    var days = (ws[ws.length - 1].t - ws[0].t) / 864e5; if (days < 10) return "";
+    var r = (ws[ws.length - 1].kg - ws[0].kg) / (days / 7), rr = Math.round(r * 100) / 100, t;
+    if (r <= 0) t = "Your weight is flat or dropping over the last weeks. Add 200\u2013300 kcal a day and keep weighing in.";
+    else if (r < g.rate * 0.5) t = "You are gaining about " + rr + " kg/week, slower than your " + g.rate + " kg plan. Try adding 150\u2013250 kcal a day, for example a glass of milk with a banana or a handful of nuts.";
+    else if (r > Math.max(0.6, g.rate * 1.6)) t = "You are gaining about " + rr + " kg/week, faster than planned. To stay lean, trim about 150\u2013200 kcal a day.";
+    else t = "Your recent pace (" + rr + " kg/week) matches the plan. Keep going.";
+    return '<p class="meta" style="margin:10px 0 0"><b style="color:var(--ink)">Pace check:</b> ' + t + "</p>";
+  }
+  var FOODS = {
+    veg: [["Breakfast", "Oats cooked in milk with banana and nuts, paneer paratha with curd, peanut butter toast"], ["Lunch", "Rice or roti, dal, paneer or soya chunks, sabzi, curd"], ["Snack", "Banana milkshake, roasted chana and peanuts, sprouts chaat, dry fruits"], ["Dinner", "Roti, rajma or chole or paneer bhurji, salad, a glass of milk"]],
+    egg: [["Breakfast", "Omelette with toast and milk, oats with banana, boiled eggs"], ["Lunch", "Rice or roti, dal, egg curry, sabzi, curd"], ["Snack", "Peanut butter sandwich, banana shake, boiled eggs, nuts"], ["Dinner", "Roti, paneer or egg bhurji, dal, salad, a glass of milk"]],
+    non: [["Breakfast", "Eggs with toast, oats with milk and banana"], ["Lunch", "Rice or roti, chicken or fish curry, dal, sabzi"], ["Snack", "Peanut butter sandwich, banana shake, boiled eggs, nuts"], ["Dinner", "Roti, chicken or fish, vegetables, curd or milk"]]
+  };
+  var SHARE = [0.25, 0.3, 0.15, 0.3];
+  function mealPlan(S, g, T) {
+    var rows = FOODS[g.diet] || FOODS.veg;
+    var h = '<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">Sample meal plan</summary><div style="margin-top:8px">';
+    rows.forEach(function (r, i) {
+      h += '<div class="x-mr"><div><b>' + r[0] + '</b> <span class="meta">~' + (Math.round(T.kc * SHARE[i] / 10) * 10) + " kcal \u00b7 " + Math.round(T.pT * SHARE[i]) + ' g protein</span><span class="meta" style="display:block;font-size:12px">' + r[1] + "</span></div></div>";
+    });
+    var sc = S.plan && S.plan.sched, tip = "";
+    if (sc) {
+      var p = (sc.time || "18:00").split(":"), m = (((+p[0]) * 60 + (+p[1] || 0) - 90) % 1440 + 1440) % 1440;
+      tip = "You train at " + fmt(sc.time) + ": eat a carb and protein meal around " + fmt(("0" + Math.floor(m / 60)).slice(-2) + ":" + ("0" + m % 60).slice(-2)) + " and get 25\u201330 g of protein within 2 hours after.";
+    }
+    return h + "</div>" + (tip ? '<p class="meta" style="margin:8px 0 0">' + tip + "</p>" : "") + '<p class="meta" style="margin:8px 0 0;font-size:12px">Approximate guide. Adjust portions to your appetite, culture and any allergies.</p></details>';
+  }
+  function intakeBlock(S, T) {
+    var f = S.plan && S.plan.food, d = (f && f[lk()]) || { k: 0, p: 0 };
+    var pk = Math.min(100, Math.round(d.k / T.kc * 100)), pp = Math.min(100, Math.round(d.p / T.pT * 100));
+    function bar(label, val, tgt, unit, pc) { return '<div class="row" style="margin-top:8px"><span>' + label + "</span><span><b>" + val.toLocaleString() + "</b> / " + tgt.toLocaleString() + " " + unit + '</span></div><div class="bar" style="margin:4px 0 0"><i style="width:' + pc + '%"></i></div>'; }
+    function btns(arr, key, unit) { return arr.map(function (n) { return '<button class="chip" data-act="f-add" data-key="' + key + '" data-n="' + n + '" type="button">+' + n + " " + unit + "</button>"; }).join(" "); }
+    return '<h3 class="x-sub">Today\u2019s intake</h3>' + bar("Calories", d.k, T.kc, "kcal", pk) + bar("Protein", d.p, T.pT, "g", pp) +
+      '<div class="x-btns" style="margin-top:10px">' + btns([150, 300, 500, 700], "k", "kcal") + '</div><div class="x-btns">' + btns([10, 20, 30, 40], "p", "g") + '<button class="chip x-danger" data-act="f-reset" type="button">Reset today</button></div>';
+  }
+
   function gainView(S) {
     var g = S.plan && S.plan.gain;
-    if (!g) return '<p class="meta" style="margin:0 0 12px">Set a target weight and a steady pace. You get a progress tracker, an estimated date and a calorie guide.</p><button class="chip" data-act="g-edit">Create plan</button>';
+    if (!g) return '<p class="meta" style="margin:0 0 12px">Set a target weight and a steady pace. You get a progress tracker, an estimated date, a calorie and macro guide, a meal plan and a daily intake tracker.</p><button class="chip" data-act="g-edit">Create plan</button>';
     var cur = latestKg(S); if (cur === null) cur = g.startKg;
     var span = g.target - g.startKg, pct = span > 0 ? Math.max(0, Math.min(100, Math.round((cur - g.startKg) / span * 100))) : 0;
     var left = r1(g.target - cur), weeks = (Date.now() - g.startT) / 6048e5;
@@ -218,22 +290,28 @@
     else st = diff >= 0.5 ? "Ahead of pace by " + diff + " kg." : diff >= -0.5 ? "On track." : "Behind pace by " + Math.abs(diff) + " kg. Check your food intake and sleep.";
     var h = '<p class="x-big2">' + cur + ' kg <span class="meta">\u2192 ' + g.target + ' kg</span></p>' +
       '<div class="bar"><i style="width:' + pct + '%"></i></div>' +
-      '<div class="row"><span><b>' + pct + '%</b> of the way</span><span>' + (left > 0 ? left + " kg to go" : "Goal reached") + '</span></div>' +
-      '<p class="meta" style="margin:10px 0 0">' + st + '</p>';
+      '<div class="row"><span><b>' + pct + '%</b> of the way</span><span>' + (left > 0 ? left + " kg to go" : "Goal reached") + "</span></div>" +
+      '<p class="meta" style="margin:10px 0 0">' + st + "</p>";
     if (left > 0) {
       var eta = new Date(Date.now() + left / g.rate * 6048e5);
-      h += '<p class="meta" style="margin:4px 0 0">At ' + g.rate + ' kg/week you could get there around ' + eta.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) + '.</p>';
+      h += '<p class="meta" style="margin:4px 0 0">At ' + g.rate + " kg/week you could get there around " + eta.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) + ".</p>";
     }
+    if (span > 0) h += trajChart(S, g);
+    h += milestones(g, cur) + paceTip(S, g);
     if (g.age && g.age < 18) {
       h += '<p class="meta" style="margin:10px 0 0">Calorie targets are shown for adults only. A doctor or dietitian can advise on a growing body.</p>';
-    } else if (g.h && g.age && g.sex) {
-      var bmr = 10 * cur + 6.25 * g.h - 5 * g.age + (g.sex === "m" ? 5 : -161);
-      var tdee = Math.round(bmr * ({ l: 1.375, m: 1.55, a: 1.725 }[g.act] || 1.55) / 10) * 10;
-      var sur = Math.round(g.rate * 1100 / 5) * 5, kc = Math.round((tdee + sur) / 10) * 10;
-      h += '<p style="margin:10px 0 0"><b>About ' + kc.toLocaleString() + ' kcal/day</b> <span class="meta">(maintenance ~' + tdee.toLocaleString() + ' + ' + sur + ')</span></p>' +
-        '<p class="meta" style="margin:4px 0 0">Protein: ' + Math.round(1.6 * cur) + '\u2013' + Math.round(2.2 * cur) + ' g/day</p>';
+    } else {
+      var T = gainTargets(g, cur);
+      if (T) {
+        h += '<h3 class="x-sub">Daily targets</h3><p style="margin:6px 0 0"><b>About ' + T.kc.toLocaleString() + ' kcal/day</b> <span class="meta">(maintenance ~' + T.tdee.toLocaleString() + " + " + T.sur + ")</span></p>" +
+          '<p class="meta" style="margin:4px 0 0">Protein ' + T.pT + " g \u00b7 Carbs " + T.carb + " g \u00b7 Fat " + T.fat + " g</p>" +
+          '<p class="meta" style="margin:2px 0 0;font-size:12px">Protein range: ' + T.pLo + "\u2013" + T.pHi + " g/day</p>" +
+          intakeBlock(S, T) + mealPlan(S, g, T);
+      } else {
+        h += '<p class="meta" style="margin:10px 0 0">Add your height, age and sex in Edit plan to unlock daily calories, macros, a meal plan and the intake tracker.</p>';
+      }
     }
-    h += '<p class="meta" style="margin:10px 0 0;font-size:12px">Estimates only, not medical advice. If you have a health condition, check with a doctor or dietitian.</p>' +
+    h += '<p class="meta" style="margin:12px 0 0;font-size:12px">Estimates only, not medical advice. If you have a health condition, check with a doctor or dietitian.</p>' +
       '<button class="chip" data-act="g-edit" style="margin-top:12px">Edit plan</button>';
     return h;
   }
@@ -269,10 +347,24 @@
     var S = window.fitGet(), g = S.plan && S.plan.gain, lk = latestKg(S);
     $("g-cur").value = lk !== null ? lk : (g ? g.startKg : ""); $("g-tar").value = g ? g.target : "";
     $("g-rate").value = String(g ? g.rate : 0.25); $("g-h").value = (g && g.h) || ""; $("g-age").value = (g && g.age) || "";
-    $("g-sex").value = (g && g.sex) || ""; $("g-act").value = (g && g.act) || "m"; $("g-msg").textContent = "";
+    $("g-sex").value = (g && g.sex) || ""; $("g-act").value = (g && g.act) || "m"; $("g-diet").value = (g && g.diet) || "veg"; $("g-msg").textContent = "";
     editG = true; updatePlan(); $("g-cur").focus();
   }
-  gain.addEventListener("click", function (e) { var b = e.target.closest && e.target.closest("[data-act]"); if (b && b.getAttribute("data-act") === "g-edit") openG(); });
+  gain.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-act]"); if (!b) return;
+    var act = b.getAttribute("data-act");
+    if (act === "g-edit") { openG(); return; }
+    if (act !== "f-add" && act !== "f-reset") return;
+    var S = window.fitGet(); S.plan = S.plan || {}; S.plan.food = S.plan.food || {};
+    var key = lk();
+    if (act === "f-reset") delete S.plan.food[key];
+    else {
+      var d = S.plan.food[key] || { k: 0, p: 0 }, f = b.getAttribute("data-key");
+      d[f] = Math.min(20000, (d[f] || 0) + (+b.getAttribute("data-n") || 0)); d.t = Date.now(); S.plan.food[key] = d;
+    }
+    Object.keys(S.plan.food).forEach(function (k) { if (Date.now() - (S.plan.food[k].t || 0) > 14 * 864e5) delete S.plan.food[k]; });
+    commit(S);
+  });
   $("g-cancel").addEventListener("click", function () { editG = false; updatePlan(); });
   $("g-del").addEventListener("click", function () {
     var S = window.fitGet(); if (S.plan) S.plan.gain = null; editG = false; commit(S);
@@ -289,7 +381,8 @@
       target: r1(tar), rate: [0.25, 0.4, 0.5].indexOf(rate) >= 0 ? rate : 0.25,
       startKg: keep ? old.startKg : r1(cur), startT: keep ? old.startT : Date.now(),
       h: h >= 120 && h <= 230 ? Math.round(h) : 0, age: age >= 14 && age <= 90 ? age : 0,
-      sex: sex === "m" || sex === "f" ? sex : "", act: ["l", "m", "a"].indexOf(act) >= 0 ? act : "m"
+      sex: sex === "m" || sex === "f" ? sex : "", act: ["l", "m", "a"].indexOf(act) >= 0 ? act : "m",
+      diet: ["veg", "egg", "non"].indexOf($("g-diet").value) >= 0 ? $("g-diet").value : "veg"
     };
     var lk = latestKg(S);
     if (lk === null || Math.abs(lk - cur) >= 0.05) { S.weights = S.weights || []; S.weights.push({ id: Date.now(), t: Date.now(), kg: r1(cur) }); }
