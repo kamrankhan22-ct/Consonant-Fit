@@ -1,4 +1,4 @@
-/* Consonant-Fit: extra features (weekly summary, exercise progress, body weight).
+ /* Consonant-Fit: extra features (weekly summary, exercise progress, body weight).
    Loaded by index.html. Talks to the main app through window.fitGet / fitSet / fitPush
    and re-draws whenever the main app fires the "fit:render" event. */
 (function () {
@@ -527,7 +527,15 @@
   function renderLB() {
     var S = window.fitGet(), box = $("x-lbv"), u = window.fitUser, joined = !!(S.profile && S.profile.lb);
     box.textContent = "";
-    if (!window.fitLB || !u) { box.appendChild(el("p", "meta", "Sign in to see how you rank against other Consonant-Fit users.")); return; }
+    if (!window.fitLB || !u) {
+      box.appendChild(el("p", "meta", "Sign up to see how you rank against other Consonant-Fit users."));
+      if (document.body.classList.contains("tour")) {
+        var sb2 = el("button", "chip", "Sign up free"); sb2.type = "button"; sb2.style.marginTop = "10px";
+        sb2.addEventListener("click", function () { if (window.fitTour) window.fitTour.signup(); });
+        box.appendChild(sb2);
+      }
+      return;
+    }
     if (!joined) {
       var p = el("p", "meta", "Compete on weekly minutes, workouts and streak. If you join, your display name (" + myName(S) + "), photo and weekly totals are visible to other signed-in users. You can leave any time. Totals are self-reported.");
       p.style.margin = "0 0 12px"; box.appendChild(p);
@@ -1047,6 +1055,10 @@
   sb.type = "button"; sb.className = "x-act"; sb.id = "x-setb"; sb.textContent = "Settings";
   $("x-acts").insertBefore(sb, $("x-acts").firstChild);
   sb.addEventListener("click", function () { closeNav(); openSet(); });
+  var su = document.createElement("button");
+  su.type = "button"; su.className = "x-act x-su"; su.textContent = "Sign up to save your data";
+  $("x-acts").insertBefore(su, $("x-acts").firstChild);
+  su.addEventListener("click", function () { closeNav(); if (window.fitTour) window.fitTour.signup(); });
 
   document.addEventListener("fit:render", paintAll);
   document.addEventListener("fit:auth", paintAll);
@@ -1062,6 +1074,11 @@
     '<div class="ringc"><b id="hg-m">0</b><span id="hg-of"></span></div></div>' +
     '<div class="hstats"><div class="hs"><b id="hg-s">0</b><span>day streak</span></div><div class="hs"><b id="hg-c">0</b><span>workouts this week</span></div><div class="hs"><b id="hg-p">0%</b><span>of weekly goal</span></div><div class="hs"><b id="hg-st">0</b><span>steps today</span></div></div></div>';
   if (brand) brand.after(hero);
+  var tb = document.createElement("div");
+  tb.id = "x-tour";
+  tb.innerHTML = '<span>Guest mode. Your data stays on this phone.</span><button type="button" id="x-tsu">Sign up free</button>';
+  if (brand) brand.after(tb);
+  $("x-tsu").addEventListener("click", function () { if (window.fitTour) window.fitTour.signup(); });
   ["main > h1", "main > .big", "main > .bar", "main > .row", "main > .goal"].forEach(function (q) { var e = document.querySelector(q); if (e) e.style.display = "none"; });
   function updateHero() {
     var S = window.fitGet(), u = window.fitUser, d0 = new Date(); d0.setHours(0, 0, 0, 0);
