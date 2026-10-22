@@ -1,4 +1,4 @@
-const CACHE = "consonant-fit-v20";
+const CACHE = "consonant-fit-v21";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
